@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>Setting up an 3-Node InfluxDB Cluster - My Octopress Blog</title>
+  <meta name="author" content="Your Name">
+
+  
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://crapworks.github.io/blog/2014/05/18/influxdb-clustering">
+  <link href="/favicon.png" type="image/png" rel="icon">
+  <link href="/atom.xml" rel="alternate" title="My Octopress Blog" type="application/atom+xml">
+
+  <link href="/assets/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" type="text/css">
+<!--<link href="/assets/bootstrap/dist/css/bootstrap-theme.min.css" rel="stylesheet" type="text/css"> -->
+<link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js" type="text/javascript"></script>
+<script src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/jquery-ui.min.js" type="text/javascript"></script>
+
+
+  <!-- <script src="/javascripts/libs/jquery/jquery-2.0.3.min.js"></script> -->
+  
+
+</head>
+
+  <body   >
+    <div id="wrap">
+      <header role="banner">
+        <nav class="navbar navbar-default" role="navigation">
+    <div class="container">
+        <div class="navbar-header">
+            <a class="navbar-brand" href="/"><font color="#268BD2">&raquo;</font> My Octopress Blog</a>
+        </div>
+	<div class="collapse navbar-collapse">
+            <!--<p class="navbar-text navbar-right">A blogging framework for hackers.<font color="#268BD2">&laquo;</font></p>-->
+	</div>
+	<a href="https://github.com/crapworks">
+            <img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/38ef81f8aca64bb9a64448d0d70f1308ef5341ab/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f6461726b626c75655f3132313632312e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png">
+        </a>
+
+</nav>
+
+
+      </header>
+      <div id="main" class="container">
+        <div id="content">
+          <div class="row">
+  <div class="page-content col-md-9">
+    <article class="hentry" role="article">
+      
+  <header class="page-header">
+    
+      <p class="meta text-muted text-uppercase">
+        
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="glyphicon glyphicon-calendar"></span> <time datetime="2014-05-18T16:48:00+02:00" pubdate data-updated="true"></time>
+        
+      </p>
+    
+    
+    <h1 class="entry-title">
+        Setting Up an 3-Node InfluxDB Cluster
+        
+    </h1>
+    
+  </header>
+
+
+<div class="entry-content clearfix"><p><a href="http://influxdb.org">InfluxDB</a> is a quite new timeseries database. I was having a look at it during my search for alternatives for <a href="https://github.com/graphite-project">Graphites</a> carbon/whisper backend. Since it looks pretty promising, right now it need some effort to get it up and running, especially if you want to build up a cluster (one of the reasons I was searching for an alternative to carbon).</p>
+
+<p>Using version 0.6.5 I&rsquo;m going to describe what you have to do to setup a 3-Node cluster with a replication level of two. Primarily for me as a reminder, but maybe someone will find this usefull. I assume you use the Debian package provided on the influxdb website.</p>
+
+<ul>
+<li>Install influxdb:</li>
+</ul>
+
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'><span class="nv">$ </span>aptitude install influxdb
+</span></code></pre></td></tr></table></div></figure>
+
+
+<ul>
+<li>At least in this version, the package starts the influxdb instantly after installing it. Which is bad, because you have to configure clustering <strong>BEFORE</strong> the first start of you shiny new timeseries database. So stop it again, and delete the data directory that has just been created:</li>
+</ul>
+
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'><span class="nv">$ </span>service influxdb stop
+</span><span class='line'><span class="nv">$ </span>rm -rf <span class="nv">$datadir</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<ul>
+<li>Now you can configure the database for clustering. On the fist node (we will use this as our seeder host) <strong>DO NOT</strong> configure any seeders! Just set the replication level to the desired amount of replicas:</li>
+</ul>
+
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='ini'><span class='line'><span class="k">[sharding]</span>
+</span><span class='line'>  <span class="err">...</span>
+</span><span class='line'>  <span class="na">replication-factor</span> <span class="o">=</span> <span class="s">3</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<ul>
+<li>If on your system <code>hostname</code> will not return a name that is resolvable from the other node (which can happen a lot, since it doesn&rsquo;t return a FQDN, just the hostname portion), you need to set the hostname parameter to a value that is resolvable from the other nodes (you should do that on all three nodes!)</li>
+</ul>
+
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='ini'><span class='line'><span class="na">hostname</span> <span class="o">=</span> <span class="s">&quot;my.fqdn.net&quot;</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<ul>
+<li>Start the first node!</li>
+</ul>
+
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'><span class="nv">$ </span>service influxdb start
+</span></code></pre></td></tr></table></div></figure>
+
+
+<ul>
+<li>On the second and third node, configure the same replication level as on the first node. Additionally, set the first node as the seed server</li>
+</ul>
+
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='ini'><span class='line'><span class="k">[cluster]</span>
+</span><span class='line'><span class="err">...</span>
+</span><span class='line'><span class="na">seed-servers</span> <span class="o">=</span> <span class="s">[&quot;first.node.fqdn.net:8090&quot;]</span>
+</span><span class='line'>
+</span><span class='line'><span class="k">[sharding]</span>
+</span><span class='line'>  <span class="err">...</span>
+</span><span class='line'>  <span class="na">replication-factor</span> <span class="o">=</span> <span class="s">3</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<ul>
+<li>Start the second and third node!</li>
+</ul>
+
+
+<figure class='code'><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='bash'><span class='line'><span class="nv">$ </span>service influxdb start
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>At this point, your cluster should be up and running and you should see all three nodes in the cluster section of the web gui.</p>
+</div>
+
+
+      <footer>
+        <p class="meta text-muted">
+          
+  
+
+<span class="glyphicon glyphicon-user"></span> <span class="byline author vcard">Posted by <span class="fn">Your Name</span></span>
+
+          
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="glyphicon glyphicon-calendar"></span> <time datetime="2014-05-18T16:48:00+02:00" pubdate data-updated="true"></time>
+          
+
+<span class="glyphicon glyphicon-tags"></span>&nbsp;
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/technologies/'>technologies</a>
+  
+</span>
+
+
+        </p>
+        
+          <div class="sharing">
+  
+  <a href="//twitter.com/share" class="twitter-share-button" data-url="http://crapworks.github.io/blog/2014/05/18/influxdb-clustering/" data-via="" data-counturl="http://crapworks.github.io/blog/2014/05/18/influxdb-clustering/" >Tweet</a>
+  
+  
+  
+</div>
+
+        
+        
+          <ul class="meta text-muted pager">
+            
+            
+            <li class="next"><a href="/blog/2015/01/05/ceph-monitoring/" title="Next Post: Monitoring a Ceph Cluster">Monitoring a Ceph Cluster &raquo;</a></li>
+            
+          </ul>
+        
+      </footer>
+    </article>
+    
+  </div>
+
+  
+  <aside class="sidebar col-md-3">
+    
+      <section class="panel panel-default">
+  <div class="panel-heading">
+    <h3 class="panel-title">Recent Posts</h3>
+  </div>
+  
+  <div id="recent_posts" class="list-group">
+    
+    <a class="list-group-item " href="/blog/2015/01/05/ceph-monitoring/">Monitoring a Ceph Cluster</a>
+    
+    <a class="list-group-item active" href="/blog/2014/05/18/influxdb-clustering/">Setting Up an 3-Node InfluxDB Cluster</a>
+    
+  </div>
+</section>
+
+
+
+
+
+
+    
+  </aside>
+  
+</div>
+
+        </div>
+      </div>
+    </div>
+    <footer role="contentinfo"><div class="container">
+    <p class="text-muted credits">
+  Copyright &copy; 2015 - Your Name<br>
+  <small>
+      <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>,
+      <span class="credit">customized with <a href="https://github.com/kAworu/octostrap3">octostrap3</a></span>.
+  </small>
+</p>
+
+</div>
+</footer>
+    <script src="/assets/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="/javascripts/modernizr-2.0.js"></script>
+
+
+
+
+
+
+
+
+  <script type="text/javascript">
+    (function(){
+      var twitterWidgets = document.createElement('script');
+      twitterWidgets.type = 'text/javascript';
+      twitterWidgets.async = true;
+      twitterWidgets.src = '//platform.twitter.com/widgets.js';
+      document.getElementsByTagName('head')[0].appendChild(twitterWidgets);
+    })();
+  </script>
+
+
+
+
+
+  </body>
+</html>
