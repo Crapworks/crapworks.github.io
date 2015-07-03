@@ -1,4 +1,4 @@
 User-agent: *
 Disallow: 
 
-Sitemap: http://crapworks.github.io/sitemap.xml 
+Sitemap: http://crapworks.de/sitemap.xml 

@@ -4,8 +4,8 @@
 <!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
 <head>
   <meta charset="utf-8">
-  <title>Monitoring a Ceph Cluster - My Octopress Blog</title>
-  <meta name="author" content="Your Name">
+  <title>Monitoring a Ceph Cluster - Crapworks</title>
+  <meta name="author" content="Christian Eichelmann">
 
   
   
@@ -16,9 +16,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   
-  <link rel="canonical" href="http://crapworks.github.io/blog/2015/01/05/ceph-monitoring">
+  <link rel="canonical" href="http://crapworks.de/blog/2015/01/05/ceph-monitoring">
   <link href="/favicon.png" type="image/png" rel="icon">
-  <link href="/atom.xml" rel="alternate" title="My Octopress Blog" type="application/atom+xml">
+  <link href="/atom.xml" rel="alternate" title="Crapworks" type="application/atom+xml">
 
   <link href="/assets/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" type="text/css">
 <!--<link href="/assets/bootstrap/dist/css/bootstrap-theme.min.css" rel="stylesheet" type="text/css"> -->
@@ -29,6 +29,18 @@
 
   <!-- <script src="/javascripts/libs/jquery/jquery-2.0.3.min.js"></script> -->
   
+  <script type="text/javascript">
+    var _gaq = _gaq || [];
+    _gaq.push(['_setAccount', 'UA-58282115-1']);
+    _gaq.push(['_trackPageview']);
+
+    (function() {
+      var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+      ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+      var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+    })();
+  </script>
+
 
 </head>
 
@@ -38,10 +50,10 @@
         <nav class="navbar navbar-default" role="navigation">
     <div class="container">
         <div class="navbar-header">
-            <a class="navbar-brand" href="/"><font color="#268BD2">&raquo;</font> My Octopress Blog</a>
+            <a class="navbar-brand" href="/"><font color="#268BD2">&raquo;</font> Crapworks</a>
         </div>
 	<div class="collapse navbar-collapse">
-            <!--<p class="navbar-text navbar-right">A blogging framework for hackers.<font color="#268BD2">&laquo;</font></p>-->
+            <!--<p class="navbar-text navbar-right">Making IT better since 1965<font color="#268BD2">&laquo;</font></p>-->
 	</div>
 	<a href="https://github.com/crapworks">
             <img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/38ef81f8aca64bb9a64448d0d70f1308ef5341ab/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f6461726b626c75655f3132313632312e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png">
@@ -86,59 +98,50 @@
   </header>
 
 
-<div class="entry-content clearfix"><p><a href="http://ceph.com">Ceph</a> is a distributed object storage technology. I&rsquo;ve been working with it for nearly a year now and I can honestly say it is a beast. It takes a lot of time to get into all the details and I still know only the more high level functions of this masterpiece of open source development.</p>
+<div class="entry-content clearfix"><p><a href="http://ceph.com">Ceph</a> is a distributed object storage technology. I’ve been working with it for nearly a year now and I can honestly say it is a beast. It takes a lot of time to get into all the details and I still know only the more high level functions of this masterpiece of open source development.</p>
 
-<p>One problem I was confronted with quite early was: How to monitor the cluster health in a convenient way? Before I start to describe how I solved this problem, I want to say something about monitoring in general. Monitoring is kind of a religious things for Systemadministrators. If you&rsquo;ve found something that fits for you, you will most likely stick to it, until death does you part from your monitoring system. So maybe the approach I was taking is not the right one for you. I will try to seperate things as good as possible, so you can adapt my solution to your needs.</p>
+<p>One problem I was confronted with quite early was: How to monitor the cluster health in a convenient way? Before I start to describe how I solved this problem, I want to say something about monitoring in general. Monitoring is kind of a religious things for Systemadministrators. If you’ve found something that fits for you, you will most likely stick to it, until death does you part from your monitoring system. So maybe the approach I was taking is not the right one for you. I will try to seperate things as good as possible, so you can adapt my solution to your needs.</p>
 
-<h3>Monitoring System</h3>
-
+<h3 id="monitoring-system">Monitoring System</h3>
 <p>We use a more or less complex <a href="http://icinga.org">Icinga</a> setup together with mod-gearman and a bunch of self written software that glues everything together. For example a custom gearman-worker which reads generated performance data from the gearman queue parses and transforms it and throws it at our graphite cluster. That gives us a lot of flexibility on what we want to do with that data later on. Another small piece of software integrates the graphite graphs neatly into the monitoring web interface (we use <a href="http://thruk.org">Thruk</a>)</p>
 
-<h3>Existing Solutions</h3>
-
-<p>During my research I&rsquo;ve found several Nagios/Icinga checks for monitoring a Ceph cluster. All of them had the same approach: The check is running locally on a ceph monitor node, executing the <code>ceph status</code> command. The check then parses the output and tells me if something is wrong or not.</p>
+<h3 id="existing-solutions">Existing Solutions</h3>
+<p>During my research I’ve found several Nagios/Icinga checks for monitoring a Ceph cluster. All of them had the same approach: The check is running locally on a ceph monitor node, executing the <code>ceph status</code> command. The check then parses the output and tells me if something is wrong or not.</p>
 
 <p>Here are some examples:</p>
 
 <ul>
-<li><a href="https://github.com/valerytschopp/ceph-nagios-plugins">ceph-nagios-plugin</a></li>
-<li><a href="http://git.zionetrix.net/?a=summary&amp;p=check_ceph_status">check-ceph-status</a></li>
-<li><a href="https://github.com/ceph/ceph-nagios-plugin">ceph-nagios-plugin.pl</a></li>
+  <li><a href="https://github.com/valerytschopp/ceph-nagios-plugins">ceph-nagios-plugin</a></li>
+  <li><a href="http://git.zionetrix.net/?a=summary&amp;p=check_ceph_status">check-ceph-status</a></li>
+  <li><a href="https://github.com/ceph/ceph-nagios-plugin">ceph-nagios-plugin.pl</a></li>
 </ul>
 
-
-<p>Though this would have done the job, I didn&rsquo;t like some aspects of it:</p>
+<p>Though this would have done the job, I didn’t like some aspects of it:</p>
 
 <ul>
-<li>Running checks locally is not cool. Especially in a distributed and redundant environment</li>
-<li>These checks only tell me if something is wrong, not what exactly</li>
-<li>The are no performance data gathered</li>
+  <li>Running checks locally is not cool. Especially in a distributed and redundant environment</li>
+  <li>These checks only tell me if something is wrong, not what exactly</li>
+  <li>The are no performance data gathered</li>
 </ul>
 
+<h3 id="monitoring-vs-dashboards">Monitoring vs. Dashboards</h3>
+<p>Since using graphite, I’ve discovered my appreciation of fancy dashboards. If well designed, they show you at a glance if something is wrong and nearly instantly give you a hint what could have caused the problem.There are several Dashboards for ceph available, including Calamarie, the former Ceph Enterprise Dashboard which is now Open Source. I hate ‘em all. Why? Most of them use the ceph_rest_api which is plain crap (sorry, my oppinion) and you often have to click on something to see more relevant information. And in case of Calamarie you have to setup a bazillion things to use it. I wanted to have something that is strictly read-only and shows me everything on one clear to read page. And additionaly, it would be cool to use it for automated monitoring approaches as well!</p>
 
-<h3>Monitoring vs. Dashboards</h3>
-
-<p>Since using graphite, I&rsquo;ve discovered my appreciation of fancy dashboards. If well designed, they show you at a glance if something is wrong and nearly instantly give you a hint what could have caused the problem.There are several Dashboards for ceph available, including Calamarie, the former Ceph Enterprise Dashboard which is now Open Source. I hate &lsquo;em all. Why? Most of them use the ceph_rest_api which is plain crap (sorry, my oppinion) and you often have to click on something to see more relevant information. And in case of Calamarie you have to setup a bazillion things to use it. I wanted to have something that is strictly read-only and shows me everything on one clear to read page. And additionaly, it would be cool to use it for automated monitoring approaches as well!</p>
-
-<h3>Ceph-Dash</h3>
-
-<p><a href='/images/cephdash01.png' style='text-decoration: none'><img src='/images/cephdash01.png' class='right' width='384' height='240'></a>
+<h3 id="ceph-dash">Ceph-Dash</h3>
+<p><a href="/images/cephdash01.png" style="text-decoration: none"><img src="/images/cephdash01.png" class="right" width="384" height="240" /></a>
 I did what I like to do so much: Creating something new. The result can be found on github in the form of <a href="https://github.com/Crapworks/ceph-dash">Ceph-Dash</a>. Ceph-Dash does not depend on the ceph_rest_api. It is a Flask based WSGI application, that can (and should) be deployed into Apache or Nginx. Calling it via Web-Browser will show a (hopefully) usefull and clean dashboard containing all relevant health information about your precious Ceph cluster. All you need, is a system which has a <code>ceph.conf</code>, a ceph keyring (user only needs read privleges) and <code>python-ceph</code> installed. For testing purposes you can just fire it up and Flask will bring up a simple HTTP server on port 5000, where you can check if everything wroks.
 If you call this url with <code>Content-Type: application/json</code>, you will get all the information as a json formatted output, which you can use for further (automated) processing. For example for a Nagios/Icinga plugin?</p>
 
-<h3>Check Ceph-Dash</h3>
+<h3 id="check-ceph-dash">Check Ceph-Dash</h3>
+<p>Indeed! I’ve also provided a Nagios plugin for use with Ceph-Dash, called <a href="https://github.com/Crapworks/check_ceph_dash">check_ceph_dash</a>. Due to it’s nature, it can be triggered remotely. We have five ceph monitors and use a loadbalancer to distribute requests to Ceph-Dash to these monitors. Which means if some of them go down, the Nagios check will still work, since it will talk to the loadbalanced high-available address. It also provides a lot of performance metrics which we will feed into graphite to do more cool stuff with it.</p>
 
-<p>Indeed! I&rsquo;ve also provided a Nagios plugin for use with Ceph-Dash, called <a href="https://github.com/Crapworks/check_ceph_dash">check_ceph_dash</a>. Due to it&rsquo;s nature, it can be triggered remotely. We have five ceph monitors and use a loadbalancer to distribute requests to Ceph-Dash to these monitors. Which means if some of them go down, the Nagios check will still work, since it will talk to the loadbalanced high-available address. It also provides a lot of performance metrics which we will feed into graphite to do more cool stuff with it.</p>
+<h3 id="graphitegrafana">Graphite/Grafana</h3>
+<p><a href="/images/grafana01.png" style="text-decoration: none"><img src="/images/grafana01.png" class="left" width="383" height="186" /></a>
+Once in graphite, we use the data to build another dashboard in <a href="http://grafana.org/">Grafana</a>. It’s up to you what information you want to monitor. For an example on how your Grafana dashboard might look like, I’ve provided a screenshot of ours. Of course you can use the native graphite dashboards as well, or for example use the really cool <a href="http://jondot.github.io/graphene/">Graphene</a> library. We use a check interval of 60 seconds in out Icinga setup, so the values in our dashboards are quite precise and up to date.</p>
 
-<h3>Graphite/Grafana</h3>
-
-<p><a href='/images/grafana01.png' style='text-decoration: none'><img src='/images/grafana01.png' class='left' width='383' height='186'></a>
-Once in graphite, we use the data to build another dashboard in <a href="http://grafana.org/">Grafana</a>. It&rsquo;s up to you what information you want to monitor. For an example on how your Grafana dashboard might look like, I&rsquo;ve provided a screenshot of ours. Of course you can use the native graphite dashboards as well, or for example use the really cool <a href="http://jondot.github.io/graphene/">Graphene</a> library. We use a check interval of 60 seconds in out Icinga setup, so the values in our dashboards are quite precise and up to date.</p>
-
-<h3>Integration</h3>
-
-<p><a href='/images/cephdash02.png' style='text-decoration: none'><img src='/images/cephdash02.png' class='right' width='384' height='240'></a>
-As I&rsquo;ve mentioned before, I wanted as much information as possible on one single page. So I decided to use the awesome <a href="http://d3js.org/">D3</a> library to integrate the graphite data into Ceph-Dash. So if you have any kind of graphite source that you want to display in Ceph-Dash (it doesn&rsquo;t matter if the data is gathered via check_ceph_dash or in any other way) you can do this by configuring the graphite section in the configuration file.</p>
+<h3 id="integration">Integration</h3>
+<p><a href="/images/cephdash02.png" style="text-decoration: none"><img src="/images/cephdash02.png" class="right" width="384" height="240" /></a>
+As I’ve mentioned before, I wanted as much information as possible on one single page. So I decided to use the awesome <a href="http://d3js.org/">D3</a> library to integrate the graphite data into Ceph-Dash. So if you have any kind of graphite source that you want to display in Ceph-Dash (it doesn’t matter if the data is gathered via check_ceph_dash or in any other way) you can do this by configuring the graphite section in the configuration file.</p>
 
 <p>If you are giving Ceph-Dash a shot and want to share your experiences or report bugs or any kind of strange behaviour, you can contact me via github. Even more welcome are people who want to contribute and send patches or implement new cool features! I hope the article will be usefull for someone out there and will help to tame the beast called Ceph.</p>
 </div>
@@ -149,7 +152,7 @@ As I&rsquo;ve mentioned before, I wanted as much information as possible on one 
           
   
 
-<span class="glyphicon glyphicon-user"></span> <span class="byline author vcard">Posted by <span class="fn">Your Name</span></span>
+<span class="glyphicon glyphicon-user"></span> <span class="byline author vcard">Posted by <span class="fn">Christian Eichelmann</span></span>
 
           
 
@@ -178,8 +181,6 @@ As I&rsquo;ve mentioned before, I wanted as much information as possible on one 
         </p>
         
           <div class="sharing">
-  
-  <a href="//twitter.com/share" class="twitter-share-button" data-url="http://crapworks.github.io/blog/2015/01/05/ceph-monitoring/" data-via="" data-counturl="http://crapworks.github.io/blog/2015/01/05/ceph-monitoring/" >Tweet</a>
   
   
   
@@ -216,8 +217,53 @@ As I&rsquo;ve mentioned before, I wanted as much information as possible on one 
   </div>
 </section>
 
+<section class="panel panel-default clearfix">
+  <div class="panel-heading">
+      <h3 class="panel-title">GitHub Repos</h3>
+  </div>
+  <div class="list-group" id="gh_repos">
+    <p class="loading">Status updating...</p>
+  </div>
+  
+    <div class="gh-profile-link pull-right text-muted">
+      <a href="https://github.com/Crapworks">@Crapworks</a> on GitHub
+    </div>
+  
+  <script type="text/javascript">
+    $(document).ready(function(){
+        if (!window.jXHR){
+            var jxhr = document.createElement('script');
+            jxhr.type = 'text/javascript';
+            jxhr.src = '/javascripts/libs/jXHR.js';
+            var s = document.getElementsByTagName('script')[0];
+            s.parentNode.insertBefore(jxhr, s);
+        }
+
+        github.showRepos({
+            user: 'Crapworks',
+            count: 5,
+            skip_forks: true,
+            target: '#gh_repos'
+        });
+    });
+  </script>
+  <script src="/javascripts/github.js" type="text/javascript"> </script>
+</section>
 
 
+
+
+
+<section class="googleplus googleplus-hidden panel panel-default">
+  <div class="panel-body">
+    <h1>
+      <a href="https://plus.google.com/113427648004383721839?rel=author">
+        <img src="http://www.google.com/images/icons/ui/gprofile_button-32.png" width="32" height="32">
+        Google+
+      </a>
+    </h1>
+  </div>
+</section>
 
 
 
@@ -231,7 +277,7 @@ As I&rsquo;ve mentioned before, I wanted as much information as possible on one 
     </div>
     <footer role="contentinfo"><div class="container">
     <p class="text-muted credits">
-  Copyright &copy; 2015 - Your Name<br>
+  Copyright &copy; 2015 - Christian Eichelmann<br>
   <small>
       <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>,
       <span class="credit">customized with <a href="https://github.com/kAworu/octostrap3">octostrap3</a></span>.
