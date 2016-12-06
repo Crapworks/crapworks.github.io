@@ -1,0 +1,431 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Crapworks</title>
+    <link>http://crapworks.de/index.xml</link>
+    <description>Recent content on Crapworks</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Fri, 02 Dec 2016 09:34:45 +0100</lastBuildDate>
+    <atom:link href="http://crapworks.de/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>OpenSource Metric Based Monitoring</title>
+      <link>http://crapworks.de/post/metric-based-monitoring/</link>
+      <pubDate>Fri, 02 Dec 2016 09:34:45 +0100</pubDate>
+      
+      <guid>http://crapworks.de/post/metric-based-monitoring/</guid>
+      <description>
+
+&lt;p&gt;I&amp;rsquo;ve noticed that I&amp;rsquo;m running late for my obligatory one blogpost per year, so I decided I could share my current experience with monitoring volatile infrastructures. Or in other words monitoring in a constantly changing environment, where nodes and container can appear and disappear anytime. The challenge here is not only to automate the whole monitoring process but also to decide if it is an error when a node suddenly disappears or if it is just part of a normal downscaling process.&lt;/p&gt;
+
+&lt;p&gt;Although you can still use check-based monitoring systems in such an environment, metric based monitoring is much more dynamic and flexible. You are just gathering all the metrics you can get from whatever appears in your infrastructure and then decide later what to do with it. In this blogpost I want to give an example of a full-stack metric based monitoring solution. As usual, most of the parts are interchangable. So if you like $INSERTYOURTOOLHERE more, you can use it, as long as it is able to genereate metrics for the metric backend.&lt;/p&gt;
+
+&lt;p&gt;So here is the list of tools I am going to describe and integrate:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://www.influxdata.com/time-series-platform/influxdb/&#34;&gt;InfluxDB&lt;/a&gt; (Timeseries Database)&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://www.influxdata.com/time-series-platform/telegraf/&#34;&gt;Telegraf&lt;/a&gt; (Metric Collector)&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://www.influxdata.com/time-series-platform/kapacitor/&#34;&gt;Kapacitor&lt;/a&gt; (Data Processing Engine)&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://alerta.io/&#34;&gt;Alerta&lt;/a&gt; (Alerting Dashboard)&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://grafana.org/&#34;&gt;Grafana&lt;/a&gt; (Metric Visualization)&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://www.python.org/&#34;&gt;Python&lt;/a&gt; (Because I like it)&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;All of the tools listed above have APIs which allow you to automate rollout and configuration processes. All the InfluxData products are simply &lt;a href=&#34;https://golang.org/&#34;&gt;GO&lt;/a&gt; binaries and start by using one configuration file. This can be automated easily by any available configuration managemant (even with Ansible&amp;hellip;).&lt;/p&gt;
+
+&lt;h3 id=&#34;influxdb&#34;&gt;InfluxDB&lt;/h3&gt;
+
+&lt;p&gt;Ok, lets get started. First we are going to setup the InfluxDB. This will be our central point where we keep all of our metrics. Almost every other component in this setup is interchangeble, but this should be used as a backend. If you prefer other Timeseries Databases, I am sure you can work with them as well. But since the guys behind InfluxDB did a great job building their TICK Stack it is by far my preferred solution. You can download the appropriat package for your operatingsystem on their website and install it. InfluxDB runs out of the box and generally needs no further configuration. Conveniently, the database is able to understand several protocol, besides it&amp;rsquo;s on http based interface. If you are already collecting metrics via &lt;a href=&#34;https://graphiteapp.org/&#34;&gt;Graphite&lt;/a&gt; or using &lt;a href=&#34;https://collectd.org/&#34;&gt;CollectD&lt;/a&gt; as a metric collector, you can easily configure InfluxDB to store their data by simply enabling the corresponding inputs in the config file &lt;code&gt;/etc/influxdb/influxdb.conf&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-ini&#34; data-lang=&#34;ini&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;[[collectd]]&lt;/span&gt;
+  &lt;span class=&#34;na&#34;&gt;enabled&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;true&lt;/span&gt;
+
+&lt;span class=&#34;k&#34;&gt;[[graphite]]&lt;/span&gt;
+  &lt;span class=&#34;na&#34;&gt;enabled&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;true&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;This will open additional (configurable) ports where you can point your metric sources to. No further migration required!&lt;/p&gt;
+
+&lt;h3 id=&#34;telegraf&#34;&gt;Telegraf&lt;/h3&gt;
+
+&lt;p&gt;Telegraf is a metric collector, similar to &lt;a href=&#34;https://collectd.org/&#34;&gt;CollectD&lt;/a&gt; or &lt;a href=&#34;https://github.com/python-diamond/Diamond&#34;&gt;Diamond&lt;/a&gt;. It already provides a ton of usefull input and output plugins and can be easily extended. It comes from the same developers that designed the InfluxDB so they work very well together. Which is important! I learned the hard way that just storing data in your TSDB doesn&amp;rsquo;t mean you can do anything useful with them afterwards. They should use proper field names and tags to be usefull for monitoring and graphing. Using the already implemented Telegraf plugins keeps that kind of struggle away from you, since they know what they are doing (most of the time). But like I said, this component can be easily traded for your favourite metric collector.&lt;/p&gt;
+
+&lt;p&gt;Configuration is as easy as editing one config file and enabling the input that you want to collect. Want to monitor Kubernetes, including pods and containers? Here you go!&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-ini&#34; data-lang=&#34;ini&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;[[inputs.kubernetes]]&lt;/span&gt;
+  &lt;span class=&#34;na&#34;&gt;url&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;quot;http://127.0.0.1:10255&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;The only thing left is to point Telegraf at your InfluxDB and maybe provide some global tags that get added to every single metric to make grouping and selecting even easier:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-ini&#34; data-lang=&#34;ini&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;[global_tags]&lt;/span&gt;
+  &lt;span class=&#34;na&#34;&gt;cluster&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;quot;021&amp;quot;&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  datacenter = &amp;quot;murika&amp;quot;&lt;/span&gt;
+
+&lt;span class=&#34;k&#34;&gt;[[outputs.influxdb]]&lt;/span&gt;
+  &lt;span class=&#34;na&#34;&gt;username&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;quot;user&amp;quot;&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  password = &amp;quot;passw0rd&amp;quot;&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  urls = [&amp;quot;http://influxdb.mycorp.net:8086&amp;quot;]&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  database = &amp;quot;telegraf&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;h3 id=&#34;kapacitor&#34;&gt;Kapacitor&lt;/h3&gt;
+
+&lt;p&gt;Here are things getting a little bit trickier. Kapacitor is a service that subscribes to databases in our InfluxDB, which means that any data that is inserted into said databases is also mirrored into Kapacitor. It then uses so called TICKScripts to evaluate the incoming data, transform it, join it and finally decide if something needs our attention. Since I struggled here for quite a while to get things up and running, here is a little more in depth walkthrough.&lt;/p&gt;
+
+&lt;p&gt;Getting Kapacitor up and running is as easy as for all the InfluxData tools: download the appropriate package for your system, install it and edit the configuration file to point at your precious InfluxDB:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-ini&#34; data-lang=&#34;ini&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;[[influxdb]]&lt;/span&gt;
+  &lt;span class=&#34;na&#34;&gt;username&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;quot;user&amp;quot;&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  password = &amp;quot;passw0rd&amp;quot;&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  name = &amp;quot;influxdb&amp;quot;&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  default = true&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  enabled = true&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  urls = [&amp;quot;http://influxdb.mycorp.net:8086&amp;quot;]&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Right now kapacitor is seeing all of the traffic that goes through your InfluxDB. And thats it. It does acutally nothing. Not cool? Right. So now we are writing some fancy TICKScripts to do some actuall alerting. As an example, we want to monitor the disk usage and alert if a disk is 80% full (Warning) or 90% full (Critical).&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-tcsh&#34; data-lang=&#34;tcsh&#34;&gt;&lt;span&gt;&lt;/span&gt;// Parameters
+var &lt;span class=&#34;nv&#34;&gt;warn&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; 80
+var &lt;span class=&#34;nv&#34;&gt;crit&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; 90
+
+var &lt;span class=&#34;nv&#34;&gt;period&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; 10s
+var &lt;span class=&#34;nv&#34;&gt;every&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; 10s
+
+// Dataframe
+var &lt;span class=&#34;nv&#34;&gt;data&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; stream
+  |from&lt;span class=&#34;o&#34;&gt;()&lt;/span&gt;
+    .database&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;telegraf&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .retentionPolicy&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;autogen&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .measurement&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;disk&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .groupBy&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;host&amp;#39;&lt;/span&gt;, &lt;span class=&#34;s1&#34;&gt;&amp;#39;cluster&amp;#39;&lt;/span&gt;, &lt;span class=&#34;s1&#34;&gt;&amp;#39;datacenter&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+  |window&lt;span class=&#34;o&#34;&gt;()&lt;/span&gt;
+    .period&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;period&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .every&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;every&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+  |mean&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;used_percent&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .as&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;stat&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+
+// Thresholds
+var &lt;span class=&#34;nv&#34;&gt;alert&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; data
+  |alert&lt;span class=&#34;o&#34;&gt;()&lt;/span&gt;
+    .id&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{{ index .Tags &amp;quot;host&amp;quot;}}/disk_used&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .message&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{{ .ID }}:{{ index .Fields &amp;quot;stat&amp;quot; }}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .warn&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;lambda: &lt;span class=&#34;s2&#34;&gt;&amp;quot;stat&amp;quot;&lt;/span&gt; &amp;gt; warn&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .crit&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;lambda: &lt;span class=&#34;s2&#34;&gt;&amp;quot;stat&amp;quot;&lt;/span&gt; &amp;gt; crit&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+
+// Alert
+alert
+    .log&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;/tmp/disk_alert_log.txt&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Be sure that you gather this metric via Telegraf by enabling the disk plugin:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-ini&#34; data-lang=&#34;ini&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;[[inputs.disk]]&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;The Parameters section should be obvious. Here we are defining some variables that are used in our script later on. The Dataframe section is a bit trickier. The TICKScript language is an invocation chaining language. So coming from the &lt;code&gt;stream&lt;/code&gt; of data, we are selecting all data coming &lt;code&gt;from()&lt;/code&gt; the database telegraf in the retention policy autogen (autogen is the default retention policy that is automatically generated when creating a database and has an infinite TTL). We are looking into the &lt;code&gt;measurement()&lt;/code&gt; disk, which is where our disk usage informations are stored and grouping by some tags. Important: If you want to access tags from your measurements anywhere in your TICK script, you have to group by them. Otherwise they will not be available. Then we select the time window Kapacitor should take a look at: check the data from the last 10 seconds every 10 seconds. Finally we are looking into the used_percent field to get the used percentage metric and make it available under the name &amp;lsquo;stat&amp;rsquo;.&lt;/p&gt;
+
+&lt;p&gt;If you would have gathered that data from your InfluxDB directly via InfluxQL it would look like this:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-sql&#34; data-lang=&#34;sql&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;SELECT&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;mean&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;used_percent&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;as&lt;/span&gt; &lt;span class=&#34;ss&#34;&gt;&amp;quot;stat&amp;quot;&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;FROM&lt;/span&gt; &lt;span class=&#34;ss&#34;&gt;&amp;quot;telegraf&amp;quot;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;ss&#34;&gt;&amp;quot;autogen&amp;quot;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;ss&#34;&gt;&amp;quot;disk&amp;quot;&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;GROUP&lt;/span&gt; &lt;span class=&#34;k&#34;&gt;BY&lt;/span&gt; &lt;span class=&#34;ss&#34;&gt;&amp;quot;host&amp;quot;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;ss&#34;&gt;&amp;quot;cluster&amp;quot;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;ss&#34;&gt;&amp;quot;datacenter&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Now that we have our &lt;code&gt;data&lt;/code&gt;, we can check if we are exceeding our thresholds and create an &lt;code&gt;alert()&lt;/code&gt;. Every alert should have uniqe ID, which is created via the &lt;code&gt;.id()&lt;/code&gt; property. The &lt;code&gt;.message()&lt;/code&gt; property defines a message (duh) with some human readable stuff to inform you about what is currently burning and where. The &lt;code&gt;.crit()&lt;/code&gt; and &lt;code&gt;.warn()&lt;/code&gt; properties are the actuall &amp;ldquo;check&amp;rdquo;. We test if our metric is exceeding our defined thresholds and issue a corresponding alert. For now by just writing to a temp file.&lt;/p&gt;
+
+&lt;p&gt;This works quite well for most threshold checks (like Memory, CPU and Load metrics). When we come to customizations I will show some other examples on how to utilize this highly flexible (and highly complex) alerting method.&lt;/p&gt;
+
+&lt;p&gt;But now we need to get this script running inside of Kapacitor. Save it on the host running Kapacitor as &lt;code&gt;disk.tick&lt;/code&gt; and use the command line tool &lt;code&gt;kapacitor&lt;/code&gt; to insert and enable it:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span&gt;&lt;/span&gt;kapacitor define disk -type batch -tick disk.tick -dbrp telegraf.autogen
+kapacitor &lt;span class=&#34;nb&#34;&gt;enable&lt;/span&gt; disk
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;That&amp;rsquo;s it! As soon as one of your monitored disk fills up beyond 79% you should find a file in your &lt;code&gt;/tmp&lt;/code&gt; directory containing your alert. You can find this and similar alerting examples in &lt;a href=&#34;https://github.com/influxdata/kapacitor/tree/master/examples/telegraf&#34;&gt;Kapacitors Github Repository&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h3 id=&#34;alerta&#34;&gt;Alerta&lt;/h3&gt;
+
+&lt;p&gt;Alerta is one of the (suprisingly) very few general purpose alerting dashboards out there. And honestly, it&amp;rsquo;s a bit a pain in the ass to setup. It uses &lt;a href=&#34;https://www.mongodb.com/&#34;&gt;MongoDB&lt;/a&gt; as a backend, supports different kinds of authentication and looks quite nice.&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://crapworks.de/img/alerta-screen-shot-3.png&#34;&gt;&lt;img src=&#34;http://crapworks.de/img/alerta-screen-shot-3.png&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;The by far easiest way to get alerta up and running is by using the provided &lt;a href=&#34;https://hub.docker.com/r/alerta/alerta-web/&#34;&gt;Docker Container&lt;/a&gt; and following the provided steps. I was setting it up via &lt;a href=&#34;https://saltstack.com/&#34;&gt;Salt&lt;/a&gt; to run via &lt;code&gt;mod_wsgi&lt;/code&gt; in Apache in an environment that has no public internet access. And that wasn&amp;rsquo;t that funny. So do yourself a favour and use the Docker container to make your life less painfull. The container will expose the web frontend via port 80 and the API via the /api endpoint.&lt;/p&gt;
+
+&lt;p&gt;As soon as we have Alerta running, we want Kapacitor to send alerts to our new fancy dashboard. Add the following section to your &lt;code&gt;/etc/kapacitor/kapacitor.conf&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-ini&#34; data-lang=&#34;ini&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;[alerta]&lt;/span&gt;
+  &lt;span class=&#34;na&#34;&gt;url&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;quot;http://alerta.mycorp.net/api&amp;quot;&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  enabled = true&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  origin = &amp;quot;Kapacitor&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;After a restart we can modify our TICKScript to send alerts to Alerta by exchanging:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-tcsh&#34; data-lang=&#34;tcsh&#34;&gt;&lt;span&gt;&lt;/span&gt;// Alert
+alert
+  .log&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;/tmp/disk_alert_log.txt&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;with:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-tcsh&#34; data-lang=&#34;tcsh&#34;&gt;&lt;span&gt;&lt;/span&gt;// Alert
+alert
+  .alerta&lt;span class=&#34;o&#34;&gt;()&lt;/span&gt;
+    .resource&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{{ index .Tags &amp;quot;host&amp;quot; }}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .environment&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{{ index .Tags &amp;quot;cluster&amp;quot; }}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .message&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;Disk usage is {{ .Level }}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .group&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{{ index .Tags &amp;quot;datacenter&amp;quot; }}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .value&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{{ index .Fields &amp;quot;stat&amp;quot; }}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Save the changed script and inform kapacitor about the changes:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span&gt;&lt;/span&gt;kapacitor define disk -type batch -tick disk.tick -dbrp telegraf.autogen
+kapacitor &lt;span class=&#34;nb&#34;&gt;enable&lt;/span&gt; disk
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Kapacitor will update the already existing disk task with the new informations. From now on, new alerts should appear in your Alerta Dashboard. Congratulations, your metric based alerting chain is now complete! Time for some eyecandy!&lt;/p&gt;
+
+&lt;h3 id=&#34;grafana&#34;&gt;Grafana&lt;/h3&gt;
+
+&lt;p&gt;Grafana is a really awesome way to visualize any kind of metrics. It supports different Backends and has a great query editor included if you decide to use InfluxDB as one. Installation is thankfully quite simple: download your appropriate package, install, start, done! The default port for Grafana is 3000 and the default credentials are &amp;ldquo;admin:admin&amp;rdquo;. After logging in you go to &amp;ldquo;Data Sources&amp;rdquo; and add your InfluxDB with the database &amp;ldquo;telegraf&amp;rdquo;. Now you can create dashboards as your heart desires! For automation puposes, Grafana provides an API which you can use to create datasources and dashboards.&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://crapworks.de/img/grafana_k8s.jpg&#34;&gt;&lt;img src=&#34;http://crapworks.de/img/grafana_k8s.jpg#floatleft&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;
+&lt;a href=&#34;http://crapworks.de/img/grafana_es.jpg&#34;&gt;&lt;img src=&#34;http://crapworks.de/img/grafana_es.jpg#floatright&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://crapworks.de/img/grafana_sys.jpg&#34;&gt;&lt;img src=&#34;http://crapworks.de/img/grafana_sys.jpg#floatleft&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;
+&lt;a href=&#34;http://crapworks.de/img/grafana_influx.jpg&#34;&gt;&lt;img src=&#34;http://crapworks.de/img/grafana_influx.jpg#floatright&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;Since the dashboards are highly customized for our infrastructure, sharing wouldn&amp;rsquo;t make much sense. For more generic, ready to use dashboards you can visit &lt;a href=&#34;https://grafana.net/&#34;&gt;grafana.net&lt;/a&gt; and download some pretty neat dashboards to save yourself some time. See the screenshots as a kick for your imagination. After having all your systems sending metrics to your InfluxDB, creating Dashboards and checking out what you can do with you new toys can be quite satisfying.&lt;/p&gt;
+
+&lt;h3 id=&#34;python&#34;&gt;Python&lt;/h3&gt;
+
+&lt;p&gt;Now that we have everything up and running, we will sooner or later encounter problems that can&amp;rsquo;t be solved directly by our used tools. I for example wanted some more informations from our &lt;a href=&#34;http://kubernetes.io/&#34;&gt;Kubernetes&lt;/a&gt; clusters than I could get out of the corresponding plugin. Also some of those informations were not metrics, but strings or bools. You can store them in your InfluxDB as well! Ok, let&amp;rsquo;s look at a practical example:&lt;/p&gt;
+
+&lt;p&gt;The Kubernetes API Server monitors the components needed for a Kubernetes Master internally and exposes them via it&amp;rsquo;s API. Thats sound like a good way to get alerted if our controller manager, scheduler oder ETCD server having problems! Telegraf can execute external scripts and programs, they just have to return valid InfluxDB line protocol data to stdout. So, let&amp;rsquo;s create a small Python script that get&amp;rsquo;s us the required informations:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-python&#34; data-lang=&#34;python&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;ch&#34;&gt;#!/usr/bin/env python&lt;/span&gt;
+&lt;span class=&#34;c1&#34;&gt;# -*- coding: utf-8 -*-&lt;/span&gt;
+
+&lt;span class=&#34;kn&#34;&gt;import&lt;/span&gt; &lt;span class=&#34;nn&#34;&gt;argparse&lt;/span&gt;
+&lt;span class=&#34;kn&#34;&gt;import&lt;/span&gt; &lt;span class=&#34;nn&#34;&gt;requests&lt;/span&gt;
+
+&lt;span class=&#34;n&#34;&gt;__version__&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;0.1&amp;#39;&lt;/span&gt;
+
+
+&lt;span class=&#34;k&#34;&gt;class&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;KubeStatus&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;object&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;):&lt;/span&gt;
+    &lt;span class=&#34;k&#34;&gt;def&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;__init__&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;args&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;):&lt;/span&gt;
+        &lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;args&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;args&lt;/span&gt;
+
+    &lt;span class=&#34;k&#34;&gt;def&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;_get&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;url&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;):&lt;/span&gt;
+        &lt;span class=&#34;k&#34;&gt;try&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;
+            &lt;span class=&#34;n&#34;&gt;resp&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;requests&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;get&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;url&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;timeout&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;int&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;args&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;timeout&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+        &lt;span class=&#34;k&#34;&gt;except&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;requests&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;exceptions&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Timeout&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;
+            &lt;span class=&#34;n&#34;&gt;resp&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;object&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+            &lt;span class=&#34;n&#34;&gt;resp&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;timeout&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;bp&#34;&gt;True&lt;/span&gt;
+        &lt;span class=&#34;k&#34;&gt;except&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;requests&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;exceptions&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;RequestException&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;
+            &lt;span class=&#34;n&#34;&gt;resp&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;object&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+            &lt;span class=&#34;n&#34;&gt;resp&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;error&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;bp&#34;&gt;True&lt;/span&gt;
+        &lt;span class=&#34;k&#34;&gt;finally&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;
+            &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;resp&lt;/span&gt;
+
+    &lt;span class=&#34;k&#34;&gt;def&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;get_component_status&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;):&lt;/span&gt;
+        &lt;span class=&#34;n&#34;&gt;metrics&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{}&lt;/span&gt;
+        &lt;span class=&#34;n&#34;&gt;tags&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;{}&lt;/span&gt;
+
+        &lt;span class=&#34;n&#34;&gt;resp&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;_get&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{0}/api/v1/componentstatuses&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;format&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;args&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;url&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+        &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;getattr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;resp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;timeout&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;bp&#34;&gt;False&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;):&lt;/span&gt;
+            &lt;span class=&#34;n&#34;&gt;metrics&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;timeout&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;bp&#34;&gt;True&lt;/span&gt;
+        &lt;span class=&#34;k&#34;&gt;elif&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;getattr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;resp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;error&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;bp&#34;&gt;False&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;):&lt;/span&gt;
+            &lt;span class=&#34;n&#34;&gt;metrics&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;error&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;bp&#34;&gt;True&lt;/span&gt;
+        &lt;span class=&#34;k&#34;&gt;else&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;
+            &lt;span class=&#34;n&#34;&gt;data&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;resp&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;json&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+            &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;component&lt;/span&gt; &lt;span class=&#34;ow&#34;&gt;in&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;data&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;items&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]:&lt;/span&gt;
+                &lt;span class=&#34;n&#34;&gt;tags&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;name&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;component&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;metadata&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;][&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;name&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+                &lt;span class=&#34;n&#34;&gt;metrics&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;healthy&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;component&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;conditions&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;][&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;][&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;status&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+                &lt;span class=&#34;k&#34;&gt;yield&lt;/span&gt; &lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;_influxline&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;kube_components&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;metrics&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;tags&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+
+    &lt;span class=&#34;k&#34;&gt;def&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;_influxline&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;measurement&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;metrics&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;tags&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;):&lt;/span&gt;
+        &lt;span class=&#34;n&#34;&gt;values&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;
+        &lt;span class=&#34;n&#34;&gt;mtags&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[]&lt;/span&gt;
+
+        &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;key&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;value&lt;/span&gt; &lt;span class=&#34;ow&#34;&gt;in&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;metrics&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;iteritems&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;():&lt;/span&gt;
+            &lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;isinstance&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;value&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;basestring&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;):&lt;/span&gt;
+                &lt;span class=&#34;n&#34;&gt;fmt_str&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;{0}=&amp;quot;{1}&amp;quot;&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;format&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;key&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;value&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+            &lt;span class=&#34;k&#34;&gt;else&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;
+                &lt;span class=&#34;n&#34;&gt;fmt_str&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;{0}={1}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;format&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;key&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;value&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+            &lt;span class=&#34;n&#34;&gt;values&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;append&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;fmt_str&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+
+        &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;key&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;value&lt;/span&gt; &lt;span class=&#34;ow&#34;&gt;in&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;tags&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;iteritems&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;():&lt;/span&gt;
+            &lt;span class=&#34;n&#34;&gt;fmt_str&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;{0}={1}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;format&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;key&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;value&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+            &lt;span class=&#34;n&#34;&gt;mtags&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;append&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;fmt_str&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+
+        &lt;span class=&#34;k&#34;&gt;return&lt;/span&gt; &lt;span class=&#34;s2&#34;&gt;&amp;quot;{0},{1} {2}&amp;quot;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;format&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;measurement&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;,&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;join&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;mtags&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;),&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;,&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;join&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;values&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+
+
+&lt;span class=&#34;k&#34;&gt;def&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;():&lt;/span&gt;
+    &lt;span class=&#34;n&#34;&gt;parser&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;argparse&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;ArgumentParser&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+    &lt;span class=&#34;n&#34;&gt;parser&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;add_argument&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;-v&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;--version&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;action&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;version&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;version&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;__version__&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+    &lt;span class=&#34;n&#34;&gt;parser&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;add_argument&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;-u&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;--url&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;help&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;url to query&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;default&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;http://localhost:8080&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+    &lt;span class=&#34;n&#34;&gt;parser&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;add_argument&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;-t&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;--timeout&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;help&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;timeout in seconds&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;default&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;5&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+    &lt;span class=&#34;n&#34;&gt;args&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;parser&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;parse_args&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+
+    &lt;span class=&#34;n&#34;&gt;kubestatus&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;KubeStatus&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;args&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+    &lt;span class=&#34;k&#34;&gt;for&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;metric&lt;/span&gt; &lt;span class=&#34;ow&#34;&gt;in&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;kubestatus&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;get_component_status&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;():&lt;/span&gt;
+        &lt;span class=&#34;k&#34;&gt;print&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;metric&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+
+&lt;span class=&#34;k&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;n&#34;&gt;__name__&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;==&lt;/span&gt; &lt;span class=&#34;s1&#34;&gt;&amp;#39;__main__&amp;#39;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;:&lt;/span&gt;
+    &lt;span class=&#34;n&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;This can easily be extended to gather health informations about nodes, pods and containers. The full script can be found &lt;a href=&#34;https://gist.github.com/Crapworks/1e8a817c8e21a5772279168fd515b436&#34;&gt;here&lt;/a&gt;. Now we can call it from Telegraf and gather the metrics into our InfluxDB:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-ini&#34; data-lang=&#34;ini&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;[[inputs.exec]]&lt;/span&gt;
+  &lt;span class=&#34;na&#34;&gt;commands&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;[&amp;quot;/opt/monitoring/kube_status.py&amp;quot;]&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  timeout = &amp;quot;5s&amp;quot;&lt;/span&gt;
+&lt;span class=&#34;s&#34;&gt;  data_format = &amp;quot;influx&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;We can now show the informations in our grafana dashboards (like shown in the screenshot of our kubernetes cluster dashboard). But more importantly we can create a TICKScript that is alerting us as soon as something goes wrong with our cluster:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-tcsh&#34; data-lang=&#34;tcsh&#34;&gt;&lt;span&gt;&lt;/span&gt;// Parameters
+var &lt;span class=&#34;nv&#34;&gt;period&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; 10s
+var &lt;span class=&#34;nv&#34;&gt;every&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; 10s
+
+// Dataframe
+var &lt;span class=&#34;nv&#34;&gt;data&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; stream
+  |from&lt;span class=&#34;o&#34;&gt;()&lt;/span&gt;
+    .database&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;telegraf&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .retentionPolicy&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;autogen&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .measurement&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;kube_components&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .groupBy&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;cluster&amp;#39;&lt;/span&gt;, &lt;span class=&#34;s1&#34;&gt;&amp;#39;datacenter&amp;#39;&lt;/span&gt;, &lt;span class=&#34;s1&#34;&gt;&amp;#39;name&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+  |window&lt;span class=&#34;o&#34;&gt;()&lt;/span&gt;
+    .period&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;period&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .every&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;every&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+
+// Thresholds
+var &lt;span class=&#34;nv&#34;&gt;alert&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; data
+  |alert&lt;span class=&#34;o&#34;&gt;()&lt;/span&gt;
+    .id&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;kubernetes/{{ index .Tags &amp;quot;name&amp;quot;}}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .message&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{{ .ID }}:{{ index .Fields &amp;quot;healthy&amp;quot; }}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .crit&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;lambda: bool&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s2&#34;&gt;&amp;quot;healthy&amp;quot;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt; !&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; TRUE&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+
+// Alert
+alert
+  .alerta&lt;span class=&#34;o&#34;&gt;()&lt;/span&gt;
+    .resource&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{{ index .Tags &amp;quot;cluster&amp;quot; }}/kubernetes&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .environment&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{{ index .Tags &amp;quot;cluster&amp;quot; }}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .message&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;Kubernetes component {{ index .Tags &amp;quot;name&amp;quot; }} is {{ .Level }}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .group&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{{ index .Tags &amp;quot;datacenter&amp;quot; }}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+    .value&lt;span class=&#34;o&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s1&#34;&gt;&amp;#39;{{ index .Fields &amp;quot;healthy&amp;quot; }}&amp;#39;&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;)&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;And here shows the true power of this kind of setup: We just added one TICKScript but every single Kubernetes cluster that sends it&amp;rsquo;s metrics to our InfluxDB is now beeing monitored for failures. As soon as a new cluster comes up, there is nothing todo, the monitoring, visualisation and alerting is already running. If a cluster is destroyed the alerts would stay in Alerta until someone deletes it, but we just hooked a script into our destruction process that clears old alerts via Alertas API and clears data from our InfluxDB. We can do that because we have full controll over everything that is happening. Every component has an API that we can talk to via all of our automation processes.&lt;/p&gt;
+
+&lt;p&gt;I hope you got an insight of what can be done using metric based monitoring and a completely OpenSource based software stack. Since we are chaining tools together mainly via well defined interfaces, changes specific to your infrastructure can be easily accomplished. Give it a try and decide for yourself if a transistion from check based monitoring is an option for you. For me it definitely was!&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Monitoring a Ceph Cluster</title>
+      <link>http://crapworks.de/post/ceph-monitoring/</link>
+      <pubDate>Mon, 05 Jan 2015 09:34:45 +0100</pubDate>
+      
+      <guid>http://crapworks.de/post/ceph-monitoring/</guid>
+      <description>
+
+&lt;p&gt;&lt;a href=&#34;http://ceph.com&#34;&gt;Ceph&lt;/a&gt; is a distributed object storage technology. I’ve been working with it for nearly a year now and I can honestly say it is a beast. It takes a lot of time to get into all the details and I still know only the more high level functions of this masterpiece of open source development.&lt;/p&gt;
+
+&lt;p&gt;One problem I was confronted with quite early was: How to monitor the cluster health in a convenient way? Before I start to describe how I solved this problem, I want to say something about monitoring in general. Monitoring is kind of a religious things for Systemadministrators. If you’ve found something that fits for you, you will most likely stick to it, until death does you part from your monitoring system. So maybe the approach I was taking is not the right one for you. I will try to seperate things as good as possible, so you can adapt my solution to your needs.&lt;/p&gt;
+
+&lt;h3 id=&#34;monitoring-system&#34;&gt;Monitoring System&lt;/h3&gt;
+
+&lt;p&gt;We use a more or less complex Icinga setup together with mod-gearman and a bunch of self written software that glues everything together. For example a custom gearman-worker which reads generated performance data from the gearman queue parses and transforms it and throws it at our graphite cluster. That gives us a lot of flexibility on what we want to do with that data later on. Another small piece of software integrates the graphite graphs neatly into the monitoring web interface (we use &lt;a href=&#34;http://thruk.org/&#34;&gt;Thruk&lt;/a&gt;)&lt;/p&gt;
+
+&lt;h3 id=&#34;existing-solutions&#34;&gt;Existing Solutions&lt;/h3&gt;
+
+&lt;p&gt;During my research I’ve found several Nagios/Icinga checks for monitoring a Ceph cluster. All of them had the same approach: The check is running locally on a ceph monitor node, executing the &lt;code&gt;ceph status&lt;/code&gt; command. The check then parses the output and tells me if something is wrong or not.&lt;/p&gt;
+
+&lt;p&gt;Here are some examples:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/valerytschopp/ceph-nagios-plugins&#34;&gt;ceph-nagios-plugin&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://git.zionetrix.net/?a=summary&amp;amp;p=check_ceph_status&#34;&gt;check-ceph-status&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/ceph/ceph-nagios-plugin&#34;&gt;ceph-nagios-plugin.pl&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Though this would have done the job, I didn’t like some aspects of it:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;Running checks locally is not cool. Especially in a distributed and redundant environment&lt;/li&gt;
+&lt;li&gt;These checks only tell me if something is wrong, not what exactly&lt;/li&gt;
+&lt;li&gt;The are no performance data gathered&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&#34;monitoring-vs-dashboards&#34;&gt;Monitoring vs. Dashboards&lt;/h3&gt;
+
+&lt;p&gt;Since using graphite, I’ve discovered my appreciation of fancy dashboards. If well designed, they show you at a glance if something is wrong and nearly instantly give you a hint what could have caused the problem.There are several Dashboards for ceph available, including Calamarie, the former Ceph Enterprise Dashboard which is now Open Source. I hate ‘em all. Why? Most of them use the ceph_rest_api which is plain crap (sorry, my oppinion) and you often have to click on something to see more relevant information. And in case of Calamarie you have to setup a bazillion things to use it. I wanted to have something that is strictly read-only and shows me everything on one clear to read page. And additionaly, it would be cool to use it for automated monitoring approaches as well!&lt;/p&gt;
+
+&lt;h3 id=&#34;ceph-dash&#34;&gt;Ceph-Dash&lt;/h3&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://crapworks.de/img/cephdash01.png&#34;&gt;&lt;img src=&#34;http://crapworks.de/img/cephdash01.png#floatright&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;
+I did what I like to do so much: Creating something new. The result can be found on github in the form of Ceph-Dash. Ceph-Dash does not depend on the ceph_rest_api. It is a Flask based WSGI application, that can (and should) be deployed into Apache or Nginx. Calling it via Web-Browser will show a (hopefully) usefull and clean dashboard containing all relevant health information about your precious Ceph cluster. All you need, is a system which has a &lt;code&gt;ceph.conf&lt;/code&gt;, a ceph keyring (user only needs read privleges) and &lt;code&gt;python-ceph&lt;/code&gt; installed. For testing purposes you can just fire it up and Flask will bring up a simple HTTP server on port 5000, where you can check if everything wroks. If you call this url with &lt;code&gt;Content-Type: application/json&lt;/code&gt;, you will get all the information as a json formatted output, which you can use for further (automated) processing. For example for a Nagios/Icinga plugin?&lt;/p&gt;
+
+&lt;h3 id=&#34;check-ceph-dash&#34;&gt;Check Ceph-Dash&lt;/h3&gt;
+
+&lt;p&gt;Indeed! I’ve also provided a Nagios plugin for use with Ceph-Dash, called &lt;a href=&#34;https://github.com/Crapworks/check_ceph_dash&#34;&gt;check_ceph_dash&lt;/a&gt;. Due to it’s nature, it can be triggered remotely. We have five ceph monitors and use a loadbalancer to distribute requests to Ceph-Dash to these monitors. Which means if some of them go down, the Nagios check will still work, since it will talk to the loadbalanced high-available address. It also provides a lot of performance metrics which we will feed into graphite to do more cool stuff with it.&lt;/p&gt;
+
+&lt;h3 id=&#34;graphite-grafana&#34;&gt;Graphite/Grafana&lt;/h3&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://crapworks.de/img/grafana01.png&#34;&gt;&lt;img src=&#34;http://crapworks.de/img/grafana01.png#floatleft&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;
+Once in graphite, we use the data to build another dashboard in Grafana. It’s up to you what information you want to monitor. For an example on how your Grafana dashboard might look like, I’ve provided a screenshot of ours. Of course you can use the native graphite dashboards as well, or for example use the really cool &lt;a href=&#34;http://jondot.github.io/graphene/&#34;&gt;Graphene&lt;/a&gt; library. We use a check interval of 60 seconds in out Icinga setup, so the values in our dashboards are quite precise and up to date.&lt;/p&gt;
+
+&lt;h3 id=&#34;integration&#34;&gt;Integration&lt;/h3&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://crapworks.de/img/cephdash02.png&#34;&gt;&lt;img src=&#34;http://crapworks.de/img/cephdash02.png#floatright&#34; alt=&#34;&#34; /&gt;&lt;/a&gt;
+As I’ve mentioned before, I wanted as much information as possible on one single page. So I decided to use the awesome D3 library to integrate the graphite data into Ceph-Dash. So if you have any kind of graphite source that you want to display in Ceph-Dash (it doesn’t matter if the data is gathered via check_ceph_dash or in any other way) you can do this by configuring the graphite section in the configuration file.&lt;/p&gt;
+
+&lt;p&gt;If you are giving Ceph-Dash a shot and want to share your experiences or report bugs or any kind of strange behaviour, you can contact me via github. Even more welcome are people who want to contribute and send patches or implement new cool features! I hope the article will be usefull for someone out there and will help to tame the beast called Ceph.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Setting Up an 3-Node InfluxDB Cluster</title>
+      <link>http://crapworks.de/post/influxdb-clustering/</link>
+      <pubDate>Sun, 18 May 2014 09:34:45 +0100</pubDate>
+      
+      <guid>http://crapworks.de/post/influxdb-clustering/</guid>
+      <description>&lt;p&gt;&lt;a href=&#34;https://influxdata.com/&#34;&gt;InfluxDB&lt;/a&gt; is a quite new timeseries database. I was having a look at it during my search for alternatives for &lt;a href=&#34;https://github.com/graphite-project&#34;&gt;Graphites&lt;/a&gt; carbon/whisper backend. Since it looks pretty promising, right now it need some effort to get it up and running, especially if you want to build up a cluster (one of the reasons I was searching for an alternative to carbon).&lt;/p&gt;
+
+&lt;p&gt;Using version 0.6.5 I’m going to describe what you have to do to setup a 3-Node cluster with a replication level of two. Primarily for me as a reminder, but maybe someone will find this usefull. I assume you use the Debian package provided on the influxdb website.&lt;/p&gt;
+
+&lt;p&gt;Install influxdb:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span&gt;&lt;/span&gt;$ aptitude install influxdb
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;At least in this version, the package starts the influxdb instantly after installing it. Which is bad, because you have to configure clustering &lt;strong&gt;BEFORE&lt;/strong&gt; the first start of you shiny new timeseries database. So stop it again, and delete the data directory that has just been created:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span&gt;&lt;/span&gt;$ service influxdb stop
+$ rm -rf &lt;span class=&#34;nv&#34;&gt;$datadir&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Now you can configure the database for clustering. On the fist node (we will use this as our seeder host) &lt;strong&gt;DO NOT&lt;/strong&gt; configure any seeders! Just set the replication level to the desired amount of replicas:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-ini&#34; data-lang=&#34;ini&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;[sharding]&lt;/span&gt;
+  &lt;span class=&#34;err&#34;&gt;...&lt;/span&gt;
+  &lt;span class=&#34;na&#34;&gt;replication-factor&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;3&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;If on your system &lt;code&gt;hostname&lt;/code&gt; will not return a name that is resolvable from the other node (which can happen a lot, since it doesn’t return a FQDN, just the hostname portion), you need to set the hostname parameter to a value that is resolvable from the other nodes (you should do that on all three nodes!)&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-ini&#34; data-lang=&#34;ini&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;na&#34;&gt;hostname&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;quot;my.fqdn.net&amp;quot;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Start the first node!&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span&gt;&lt;/span&gt;$ service influxdb start
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;On the second and third node, configure the same replication level as on the first node. Additionally, set the first node as the seed server&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-ini&#34; data-lang=&#34;ini&#34;&gt;&lt;span&gt;&lt;/span&gt;&lt;span class=&#34;na&#34;&gt;hostname&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;quot;my.fqdn.net&amp;quot;&lt;/span&gt;
+&lt;span class=&#34;k&#34;&gt;[cluster]&lt;/span&gt;
+  &lt;span class=&#34;err&#34;&gt;...&lt;/span&gt;
+  &lt;span class=&#34;na&#34;&gt;seed-servers&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;[&amp;quot;first.node.fqdn.net:8090&amp;quot;]&lt;/span&gt;
+
+&lt;span class=&#34;k&#34;&gt;[sharding]&lt;/span&gt;
+  &lt;span class=&#34;err&#34;&gt;...&lt;/span&gt;
+  &lt;span class=&#34;na&#34;&gt;replication-factor&lt;/span&gt; &lt;span class=&#34;o&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;3&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Start the second and third node!&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span&gt;&lt;/span&gt;$ service influxdb start
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;At this point, your cluster should be up and running and you should see all three nodes in the cluster section of the web gui.&lt;/p&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>
