@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Pages on Crapworks</title>
+    <link>http://crapworks.de/page/</link>
+    <description>Recent content in Pages on Crapworks</description>
+    <generator>Hugo -- gohugo.io</generator>
+    
+	<atom:link href="http://crapworks.de/page/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>About me</title>
+      <link>http://crapworks.de/page/about/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://crapworks.de/page/about/</guid>
+      <description>Some hateful words about myself Hello! My name is Christian and I probably work for some big IT company in Germany at the moment. My main tasks usually involve complaining a lot, bitching about things I would have done differently and then leading everyone to glorious victory in case they finally obeyed my omniscient commands.
+It&amp;rsquo;s also called IT-Architect.
+I have a strong operations background. For all Software Developers or DevOps (who are basically Software Developer who know how to use Heroku and Co.</description>
+    </item>
+    
+  </channel>
+</rss>

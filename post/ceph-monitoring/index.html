@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+
+  <title>Monitoring a Ceph Cluster</title>
+  <meta property="og:title" content="Monitoring a Ceph Cluster" />
+  <meta name="twitter:title" content="Monitoring a Ceph Cluster" />
+  <meta name="description" content="Ceph is a distributed object storage technology. I’ve been working with it for nearly a year now and I can honestly say it is a beast. It takes a lot of time to get into all the details and I still know only the more high level functions of this masterpiece of open source development.
+
+One problem I was confronted with quite early was: How to monitor the cluster health in a convenient way? Before I start to describe how I solved this problem, I want to say something about monitoring in general. Monitoring is kind of a religious things for Systemadministrators. If you’ve found something that fits for you, you will most likely stick to it, until death does you part from your monitoring system. So maybe the approach I was taking is not the right one for you. I will try to seperate things as good as possible, so you can adapt my solution to your needs.">
+  <meta property="og:description" content="Ceph is a distributed object storage technology. I’ve been working with it for nearly a year now and I can honestly say it is a beast. It takes a lot of time to get into all the details and I still know only the more high level functions of this masterpiece of open source development.
+
+One problem I was confronted with quite early was: How to monitor the cluster health in a convenient way? Before I start to describe how I solved this problem, I want to say something about monitoring in general. Monitoring is kind of a religious things for Systemadministrators. If you’ve found something that fits for you, you will most likely stick to it, until death does you part from your monitoring system. So maybe the approach I was taking is not the right one for you. I will try to seperate things as good as possible, so you can adapt my solution to your needs.">
+  <meta name="twitter:description" content="Ceph is a distributed object storage technology. I’ve been working with it for nearly a year now and I can honestly say it is a beast. It takes a lot of time to get into all the details and I still …">
+  <meta name="author" content="Christian Eichelmann"/>
+  <meta property="og:image" content="http://crapworks.de/img/avatar-icon.png" />
+  <meta name="twitter:image" content="http://crapworks.de/img/avatar-icon.png" />
+  <meta name="twitter:card" content="summary" />
+  <meta property="og:url" content="http://crapworks.de/post/ceph-monitoring/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Crapworks" />
+
+  <meta name="generator" content="Hugo 0.37.1" />
+  <link rel="canonical" href="http://crapworks.de/post/ceph-monitoring/" />
+  <link rel="alternate" href="http://crapworks.de/index.xml" type="application/rss+xml" title="Crapworks">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.7.1/katex.min.css" integrity="sha384-wITovz90syo1dJWVh32uuETPVEtGigN07tkttEqPv+uR2SE/mbQcG7ATL28aI9H0" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+  <link rel="stylesheet" href="http://crapworks.de/css/main.css" /><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800" /><link rel="stylesheet" href="http://crapworks.de/css/syntax.css" /><link rel="stylesheet" href="http://crapworks.de/css/codeblock.css" />
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/photoswipe/4.1.2/photoswipe.min.css" integrity="sha384-h/L2W9KefUClHWaty3SLE5F/qvc4djlyR4qY3NUV5HGQBBW7stbcfff1+I/vmsHh" crossorigin="anonymous">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/photoswipe/4.1.2/default-skin/default-skin.min.css" integrity="sha384-iD0dNku6PYSIQLyfTOpB06F2KCZJAKLOThS5HRe8b3ibhdEQ6eKsFf/EeFxdOt5R" crossorigin="anonymous">
+
+
+
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+<div class="pswp__bg"></div>
+
+<div class="pswp__scroll-wrap">
+    
+    <div class="pswp__container">
+      <div class="pswp__item"></div>
+      <div class="pswp__item"></div>
+      <div class="pswp__item"></div>
+    </div>
+    
+    <div class="pswp__ui pswp__ui--hidden">
+    <div class="pswp__top-bar">
+      
+      <div class="pswp__counter"></div>
+      <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+      <button class="pswp__button pswp__button--share" title="Share"></button>
+      <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+      <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+      
+      
+      <div class="pswp__preloader">
+        <div class="pswp__preloader__icn">
+          <div class="pswp__preloader__cut">
+            <div class="pswp__preloader__donut"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+      <div class="pswp__share-tooltip"></div>
+    </div>
+    <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+    </button>
+    <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+    </button>
+    <div class="pswp__caption">
+      <div class="pswp__caption__center"></div>
+    </div>
+    </div>
+    </div>
+</div>
+
+</head>
+
+  <body>
+    <nav class="navbar navbar-default navbar-fixed-top navbar-custom">
+  <div class="container-fluid">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#main-navbar">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="http://crapworks.de/">&raquo Crapworks</a>
+    </div>
+
+    <div class="collapse navbar-collapse" id="main-navbar">
+      <ul class="nav navbar-nav navbar-right">
+        
+
+        
+
+        
+      </ul>
+    </div>
+
+    <div class="avatar-container">
+      <div class="avatar-img-border">
+        
+          <a title="Crapworks" href="http://crapworks.de/">
+            <img class="avatar-img" src="http://crapworks.de/img/avatar-icon.png" alt="Crapworks" />
+          </a>
+        
+      </div>
+    </div>
+
+  </div>
+</nav>
+
+
+
+
+    
+  
+  
+  
+
+
+
+
+  
+
+  <header class="header-section ">
+    
+    <div class="intro-header no-img">
+      
+      <div class="container">
+        <div class="row">
+          <div>
+            <div class="post-heading">
+                
+                
+                  <span class="post-meta">
+  
+  
+  <i class="fa fa-calendar-o"></i>&nbsp;Posted on January 5, 2015
+  
+  
+  
+</span>
+
+
+                
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+
+    
+<div class="container" role="main">
+  <div class="row">
+    <div>
+      <article role="main" class="blog-post">
+        <p><a href="http://ceph.com">Ceph</a> is a distributed object storage technology. I’ve been working with it for nearly a year now and I can honestly say it is a beast. It takes a lot of time to get into all the details and I still know only the more high level functions of this masterpiece of open source development.</p>
+
+<p>One problem I was confronted with quite early was: How to monitor the cluster health in a convenient way? Before I start to describe how I solved this problem, I want to say something about monitoring in general. Monitoring is kind of a religious things for Systemadministrators. If you’ve found something that fits for you, you will most likely stick to it, until death does you part from your monitoring system. So maybe the approach I was taking is not the right one for you. I will try to seperate things as good as possible, so you can adapt my solution to your needs.</p>
+
+<h3 id="monitoring-system">Monitoring System</h3>
+
+<p>We use a more or less complex Icinga setup together with mod-gearman and a bunch of self written software that glues everything together. For example a custom gearman-worker which reads generated performance data from the gearman queue parses and transforms it and throws it at our graphite cluster. That gives us a lot of flexibility on what we want to do with that data later on. Another small piece of software integrates the graphite graphs neatly into the monitoring web interface (we use <a href="http://thruk.org/">Thruk</a>)</p>
+
+<h3 id="existing-solutions">Existing Solutions</h3>
+
+<p>During my research I’ve found several Nagios/Icinga checks for monitoring a Ceph cluster. All of them had the same approach: The check is running locally on a ceph monitor node, executing the <code>ceph status</code> command. The check then parses the output and tells me if something is wrong or not.</p>
+
+<p>Here are some examples:</p>
+
+<ul>
+<li><a href="https://github.com/valerytschopp/ceph-nagios-plugins">ceph-nagios-plugin</a></li>
+<li><a href="http://git.zionetrix.net/?a=summary&amp;p=check_ceph_status">check-ceph-status</a></li>
+<li><a href="https://github.com/ceph/ceph-nagios-plugin">ceph-nagios-plugin.pl</a></li>
+</ul>
+
+<p>Though this would have done the job, I didn’t like some aspects of it:</p>
+
+<ul>
+<li>Running checks locally is not cool. Especially in a distributed and redundant environment</li>
+<li>These checks only tell me if something is wrong, not what exactly</li>
+<li>The are no performance data gathered</li>
+</ul>
+
+<h3 id="monitoring-vs-dashboards">Monitoring vs. Dashboards</h3>
+
+<p>Since using graphite, I’ve discovered my appreciation of fancy dashboards. If well designed, they show you at a glance if something is wrong and nearly instantly give you a hint what could have caused the problem.There are several Dashboards for ceph available, including Calamarie, the former Ceph Enterprise Dashboard which is now Open Source. I hate ‘em all. Why? Most of them use the ceph_rest_api which is plain crap (sorry, my oppinion) and you often have to click on something to see more relevant information. And in case of Calamarie you have to setup a bazillion things to use it. I wanted to have something that is strictly read-only and shows me everything on one clear to read page. And additionaly, it would be cool to use it for automated monitoring approaches as well!</p>
+
+<h3 id="ceph-dash">Ceph-Dash</h3>
+
+<p><a href="/img/cephdash01.png"><img src="/img/cephdash01.png#floatright" alt="" /></a>
+I did what I like to do so much: Creating something new. The result can be found on github in the form of Ceph-Dash. Ceph-Dash does not depend on the ceph_rest_api. It is a Flask based WSGI application, that can (and should) be deployed into Apache or Nginx. Calling it via Web-Browser will show a (hopefully) usefull and clean dashboard containing all relevant health information about your precious Ceph cluster. All you need, is a system which has a <code>ceph.conf</code>, a ceph keyring (user only needs read privleges) and <code>python-ceph</code> installed. For testing purposes you can just fire it up and Flask will bring up a simple HTTP server on port 5000, where you can check if everything wroks. If you call this url with <code>Content-Type: application/json</code>, you will get all the information as a json formatted output, which you can use for further (automated) processing. For example for a Nagios/Icinga plugin?</p>
+
+<h3 id="check-ceph-dash">Check Ceph-Dash</h3>
+
+<p>Indeed! I’ve also provided a Nagios plugin for use with Ceph-Dash, called <a href="https://github.com/Crapworks/check_ceph_dash">check_ceph_dash</a>. Due to it’s nature, it can be triggered remotely. We have five ceph monitors and use a loadbalancer to distribute requests to Ceph-Dash to these monitors. Which means if some of them go down, the Nagios check will still work, since it will talk to the loadbalanced high-available address. It also provides a lot of performance metrics which we will feed into graphite to do more cool stuff with it.</p>
+
+<h3 id="graphite-grafana">Graphite/Grafana</h3>
+
+<p><a href="/img/grafana01.png"><img src="/img/grafana01.png#floatleft" alt="" /></a>
+Once in graphite, we use the data to build another dashboard in Grafana. It’s up to you what information you want to monitor. For an example on how your Grafana dashboard might look like, I’ve provided a screenshot of ours. Of course you can use the native graphite dashboards as well, or for example use the really cool <a href="http://jondot.github.io/graphene/">Graphene</a> library. We use a check interval of 60 seconds in out Icinga setup, so the values in our dashboards are quite precise and up to date.</p>
+
+<h3 id="integration">Integration</h3>
+
+<p><a href="/img/cephdash02.png"><img src="/img/cephdash02.png#floatright" alt="" /></a>
+As I’ve mentioned before, I wanted as much information as possible on one single page. So I decided to use the awesome D3 library to integrate the graphite data into Ceph-Dash. So if you have any kind of graphite source that you want to display in Ceph-Dash (it doesn’t matter if the data is gathered via check_ceph_dash or in any other way) you can do this by configuring the graphite section in the configuration file.</p>
+
+<p>If you are giving Ceph-Dash a shot and want to share your experiences or report bugs or any kind of strange behaviour, you can contact me via github. Even more welcome are people who want to contribute and send patches or implement new cool features! I hope the article will be usefull for someone out there and will help to tame the beast called Ceph.</p>
+      </article>
+
+      
+        <ul class="pager blog-pager">
+          
+            <li class="previous">
+              <a href="http://crapworks.de/post/influxdb-clustering/" data-toggle="tooltip" data-placement="top" title="Setting Up an 3-Node InfluxDB Cluster">&larr; Previous Post</a>
+            </li>
+          
+          
+            <li class="next">
+              <a href="http://crapworks.de/post/metric-based-monitoring/" data-toggle="tooltip" data-placement="top" title="OpenSource Metric Based Monitoring">Next Post &rarr;</a>
+            </li>
+          
+        </ul>
+      
+
+
+      
+
+    </div>
+  </div>
+</div>
+
+    <footer>
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+        <ul class="list-inline text-center footer-links">
+          
+              <li>
+                <a href="https://github.com/Crapworks" title="GitHub">
+                  <span class="fa-stack fa-lg">
+                    <i class="fa fa-circle fa-stack-2x"></i>
+                    <i class="fa fa-github fa-stack-1x fa-inverse"></i>
+                  </span>
+                </a>
+              </li>
+              <li>
+                <a href="https://www.xing.com/profile/Christian_Eichelmann" title="Xing">
+                  <span class="fa-stack fa-lg">
+                    <i class="fa fa-circle fa-stack-2x"></i>
+                    <i class="fa fa-xing fa-stack-1x fa-inverse"></i>
+                  </span>
+                </a>
+              </li>
+              <li>
+                <a href="https://stackoverflow.com/4695347/christian-eichelmann" title="StackOverflow">
+                  <span class="fa-stack fa-lg">
+                    <i class="fa fa-circle fa-stack-2x"></i>
+                    <i class="fa fa-stack-overflow fa-stack-1x fa-inverse"></i>
+                  </span>
+                </a>
+              </li>
+          
+          <li>
+            
+            <a href="http://crapworks.de/index.xml" title="RSS">
+            
+              <span class="fa-stack fa-lg">
+                <i class="fa fa-circle fa-stack-2x"></i>
+                <i class="fa fa-rss fa-stack-1x fa-inverse"></i>
+              </span>
+            </a>
+          </li>
+          
+        </ul>
+        <p class="credits copyright text-muted">
+          
+            
+              Christian Eichelmann
+            
+          
+
+          &nbsp;&bull;&nbsp;
+          2016
+
+          
+            &nbsp;&bull;&nbsp;
+            <a href="http://crapworks.de/">Crapworks</a>
+          
+        </p>
+        
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.7.1/katex.min.js" integrity="sha384-/y1Nn9+QQAipbNQWU65krzJralCnuOasHncUFXGkdwntGeSvQicrYkiUBwsgUqc1" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.7.1/contrib/auto-render.min.js" integrity="sha384-dq1/gEHSxPZQ7DdrM82ID4YVol9BYyU7GbWlIwnwyPzotpoc57wDw/guX8EaYGPx" crossorigin="anonymous"></script>
+<script src="https://code.jquery.com/jquery-1.12.4.min.js" integrity="sha256-ZosEbRLbNQzLpnKIkEdrPv7lOy9C27hHQ+Xp8a4MxAQ=" crossorigin="anonymous"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+<script src="http://crapworks.de/js/main.js"></script><script> renderMathInElement(document.body); </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/photoswipe/4.1.2/photoswipe.min.js" integrity="sha384-QELNnmcmU8IR9ZAykt67vGr9/rZJdHbiWi64V88fCPaOohUlHCqUD/unNN0BXSqy" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/photoswipe/4.1.2/photoswipe-ui-default.min.js" integrity="sha384-m67o7SkQ1ALzKZIFh4CiTA8tmadaujiTa9Vu+nqPSwDOqHrDmxLezTdFln8077+q" crossorigin="anonymous"></script>
+<script src="http://crapworks.de/js/load-photoswipe.js"></script>
+
+
+
+
+
+
+  </body>
+</html>
+

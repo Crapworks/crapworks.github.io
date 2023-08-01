@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  
+  <url>
+    <loc>http://crapworks.de/post/metric-based-monitoring/</loc>
+    <lastmod>2016-12-02T09:34:45+01:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://crapworks.de/post/ceph-monitoring/</loc>
+    <lastmod>2015-01-05T09:34:45+01:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://crapworks.de/post/influxdb-clustering/</loc>
+    <lastmod>2014-05-18T09:34:45+01:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://crapworks.de/page/about/</loc>
+  </url>
+  
+  <url>
+    <loc>http://crapworks.de/categories/</loc>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://crapworks.de/</loc>
+    <lastmod>2016-12-02T09:34:45+01:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://crapworks.de/page/</loc>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://crapworks.de/post/</loc>
+    <lastmod>2016-12-02T09:34:45+01:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://crapworks.de/tags/</loc>
+    <priority>0</priority>
+  </url>
+  
+</urlset>

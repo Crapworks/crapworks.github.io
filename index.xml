@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Crapworks</title>
+    <link>http://crapworks.de/</link>
+    <description>Recent content on Crapworks</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <lastBuildDate>Fri, 02 Dec 2016 09:34:45 +0100</lastBuildDate>
+    
+	<atom:link href="http://crapworks.de/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>OpenSource Metric Based Monitoring</title>
+      <link>http://crapworks.de/post/metric-based-monitoring/</link>
+      <pubDate>Fri, 02 Dec 2016 09:34:45 +0100</pubDate>
+      
+      <guid>http://crapworks.de/post/metric-based-monitoring/</guid>
+      <description>&lt;p&gt;I&amp;rsquo;ve noticed that I&amp;rsquo;m running late for my obligatory one blogpost per year, so I decided I could share my current experience with monitoring volatile infrastructures. Or in other words monitoring in a constantly changing environment, where nodes and container can appear and disappear anytime. The challenge here is not only to automate the whole monitoring process but also to decide if it is an error when a node suddenly disappears or if it is just part of a normal downscaling process.&lt;/p&gt;</description>
+    </item>
+    
+    <item>
+      <title>Monitoring a Ceph Cluster</title>
+      <link>http://crapworks.de/post/ceph-monitoring/</link>
+      <pubDate>Mon, 05 Jan 2015 09:34:45 +0100</pubDate>
+      
+      <guid>http://crapworks.de/post/ceph-monitoring/</guid>
+      <description>&lt;p&gt;&lt;a href=&#34;http://ceph.com&#34;&gt;Ceph&lt;/a&gt; is a distributed object storage technology. I’ve been working with it for nearly a year now and I can honestly say it is a beast. It takes a lot of time to get into all the details and I still know only the more high level functions of this masterpiece of open source development.&lt;/p&gt;
+
+&lt;p&gt;One problem I was confronted with quite early was: How to monitor the cluster health in a convenient way? Before I start to describe how I solved this problem, I want to say something about monitoring in general. Monitoring is kind of a religious things for Systemadministrators. If you’ve found something that fits for you, you will most likely stick to it, until death does you part from your monitoring system. So maybe the approach I was taking is not the right one for you. I will try to seperate things as good as possible, so you can adapt my solution to your needs.&lt;/p&gt;</description>
+    </item>
+    
+    <item>
+      <title>Setting Up an 3-Node InfluxDB Cluster</title>
+      <link>http://crapworks.de/post/influxdb-clustering/</link>
+      <pubDate>Sun, 18 May 2014 09:34:45 +0100</pubDate>
+      
+      <guid>http://crapworks.de/post/influxdb-clustering/</guid>
+      <description>&lt;p&gt;&lt;a href=&#34;https://influxdata.com/&#34;&gt;InfluxDB&lt;/a&gt; is a quite new timeseries database. I was having a look at it during my search for alternatives for &lt;a href=&#34;https://github.com/graphite-project&#34;&gt;Graphites&lt;/a&gt; carbon/whisper backend. Since it looks pretty promising, right now it need some effort to get it up and running, especially if you want to build up a cluster (one of the reasons I was searching for an alternative to carbon).&lt;/p&gt;
+
+&lt;p&gt;Using version 0.6.5 I’m going to describe what you have to do to setup a 3-Node cluster with a replication level of two. Primarily for me as a reminder, but maybe someone will find this usefull. I assume you use the Debian package provided on the influxdb website.&lt;/p&gt;</description>
+    </item>
+    
+    <item>
+      <title>About me</title>
+      <link>http://crapworks.de/page/about/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://crapworks.de/page/about/</guid>
+      <description>Some hateful words about myself Hello! My name is Christian and I probably work for some big IT company in Germany at the moment. My main tasks usually involve complaining a lot, bitching about things I would have done differently and then leading everyone to glorious victory in case they finally obeyed my omniscient commands.
+It&amp;rsquo;s also called IT-Architect.
+I have a strong operations background. For all Software Developers or DevOps (who are basically Software Developer who know how to use Heroku and Co.</description>
+    </item>
+    
+  </channel>
+</rss>

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+
+  <title>OpenSource Metric Based Monitoring</title>
+  <meta property="og:title" content="OpenSource Metric Based Monitoring" />
+  <meta name="twitter:title" content="OpenSource Metric Based Monitoring" />
+  <meta name="description" content="I&rsquo;ve noticed that I&rsquo;m running late for my obligatory one blogpost per year, so I decided I could share my current experience with monitoring volatile infrastructures. Or in other words monitoring in a constantly changing environment, where nodes and container can appear and disappear anytime. The challenge here is not only to automate the whole monitoring process but also to decide if it is an error when a node suddenly disappears or if it is just part of a normal downscaling process.">
+  <meta property="og:description" content="I&rsquo;ve noticed that I&rsquo;m running late for my obligatory one blogpost per year, so I decided I could share my current experience with monitoring volatile infrastructures. Or in other words monitoring in a constantly changing environment, where nodes and container can appear and disappear anytime. The challenge here is not only to automate the whole monitoring process but also to decide if it is an error when a node suddenly disappears or if it is just part of a normal downscaling process.">
+  <meta name="twitter:description" content="I&rsquo;ve noticed that I&rsquo;m running late for my obligatory one blogpost per year, so I decided I could share my current experience with monitoring volatile infrastructures. Or in other words …">
+  <meta name="author" content="Christian Eichelmann"/>
+  <meta property="og:image" content="http://crapworks.de/img/avatar-icon.png" />
+  <meta name="twitter:image" content="http://crapworks.de/img/avatar-icon.png" />
+  <meta name="twitter:card" content="summary" />
+  <meta property="og:url" content="http://crapworks.de/post/metric-based-monitoring/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Crapworks" />
+
+  <meta name="generator" content="Hugo 0.37.1" />
+  <link rel="canonical" href="http://crapworks.de/post/metric-based-monitoring/" />
+  <link rel="alternate" href="http://crapworks.de/index.xml" type="application/rss+xml" title="Crapworks">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.7.1/katex.min.css" integrity="sha384-wITovz90syo1dJWVh32uuETPVEtGigN07tkttEqPv+uR2SE/mbQcG7ATL28aI9H0" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+  <link rel="stylesheet" href="http://crapworks.de/css/main.css" /><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800" /><link rel="stylesheet" href="http://crapworks.de/css/syntax.css" /><link rel="stylesheet" href="http://crapworks.de/css/codeblock.css" />
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/photoswipe/4.1.2/photoswipe.min.css" integrity="sha384-h/L2W9KefUClHWaty3SLE5F/qvc4djlyR4qY3NUV5HGQBBW7stbcfff1+I/vmsHh" crossorigin="anonymous">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/photoswipe/4.1.2/default-skin/default-skin.min.css" integrity="sha384-iD0dNku6PYSIQLyfTOpB06F2KCZJAKLOThS5HRe8b3ibhdEQ6eKsFf/EeFxdOt5R" crossorigin="anonymous">
+
+
+
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+<div class="pswp__bg"></div>
+
+<div class="pswp__scroll-wrap">
+    
+    <div class="pswp__container">
+      <div class="pswp__item"></div>
+      <div class="pswp__item"></div>
+      <div class="pswp__item"></div>
+    </div>
+    
+    <div class="pswp__ui pswp__ui--hidden">
+    <div class="pswp__top-bar">
+      
+      <div class="pswp__counter"></div>
+      <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+      <button class="pswp__button pswp__button--share" title="Share"></button>
+      <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+      <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+      
+      
+      <div class="pswp__preloader">
+        <div class="pswp__preloader__icn">
+          <div class="pswp__preloader__cut">
+            <div class="pswp__preloader__donut"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+      <div class="pswp__share-tooltip"></div>
+    </div>
+    <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+    </button>
+    <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+    </button>
+    <div class="pswp__caption">
+      <div class="pswp__caption__center"></div>
+    </div>
+    </div>
+    </div>
+</div>
+
+</head>
+
+  <body>
+    <nav class="navbar navbar-default navbar-fixed-top navbar-custom">
+  <div class="container-fluid">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#main-navbar">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="http://crapworks.de/">&raquo Crapworks</a>
+    </div>
+
+    <div class="collapse navbar-collapse" id="main-navbar">
+      <ul class="nav navbar-nav navbar-right">
+        
+
+        
+
+        
+      </ul>
+    </div>
+
+    <div class="avatar-container">
+      <div class="avatar-img-border">
+        
+          <a title="Crapworks" href="http://crapworks.de/">
+            <img class="avatar-img" src="http://crapworks.de/img/avatar-icon.png" alt="Crapworks" />
+          </a>
+        
+      </div>
+    </div>
+
+  </div>
+</nav>
+
+
+
+
+    
+  
+  
+  
+
+
+
+
+  
+
+  <header class="header-section ">
+    
+    <div class="intro-header no-img">
+      
+      <div class="container">
+        <div class="row">
+          <div>
+            <div class="post-heading">
+                
+                
+                  <span class="post-meta">
+  
+  
+  <i class="fa fa-calendar-o"></i>&nbsp;Posted on December 2, 2016
+  
+  
+  
+</span>
+
+
+                
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+
+    
+<div class="container" role="main">
+  <div class="row">
+    <div>
+      <article role="main" class="blog-post">
+        <p>I&rsquo;ve noticed that I&rsquo;m running late for my obligatory one blogpost per year, so I decided I could share my current experience with monitoring volatile infrastructures. Or in other words monitoring in a constantly changing environment, where nodes and container can appear and disappear anytime. The challenge here is not only to automate the whole monitoring process but also to decide if it is an error when a node suddenly disappears or if it is just part of a normal downscaling process.</p>
+
+<p>Although you can still use check-based monitoring systems in such an environment, metric based monitoring is much more dynamic and flexible. You are just gathering all the metrics you can get from whatever appears in your infrastructure and then decide later what to do with it. In this blogpost I want to give an example of a full-stack metric based monitoring solution. As usual, most of the parts are interchangable. So if you like $INSERTYOURTOOLHERE more, you can use it, as long as it is able to genereate metrics for the metric backend.</p>
+
+<p>So here is the list of tools I am going to describe and integrate:</p>
+
+<ul>
+<li><a href="https://www.influxdata.com/time-series-platform/influxdb/">InfluxDB</a> (Timeseries Database)</li>
+<li><a href="https://www.influxdata.com/time-series-platform/telegraf/">Telegraf</a> (Metric Collector)</li>
+<li><a href="https://www.influxdata.com/time-series-platform/kapacitor/">Kapacitor</a> (Data Processing Engine)</li>
+<li><a href="http://alerta.io/">Alerta</a> (Alerting Dashboard)</li>
+<li><a href="http://grafana.org/">Grafana</a> (Metric Visualization)</li>
+<li><a href="https://www.python.org/">Python</a> (Because I like it)</li>
+</ul>
+
+<p>All of the tools listed above have APIs which allow you to automate rollout and configuration processes. All the InfluxData products are simply <a href="https://golang.org/">GO</a> binaries and start by using one configuration file. This can be automated easily by any available configuration managemant (even with Ansible&hellip;).</p>
+
+<h3 id="influxdb">InfluxDB</h3>
+
+<p>Ok, lets get started. First we are going to setup the InfluxDB. This will be our central point where we keep all of our metrics. Almost every other component in this setup is interchangeble, but this should be used as a backend. If you prefer other Timeseries Databases, I am sure you can work with them as well. But since the guys behind InfluxDB did a great job building their TICK Stack it is by far my preferred solution. You can download the appropriat package for your operatingsystem on their website and install it. InfluxDB runs out of the box and generally needs no further configuration. Conveniently, the database is able to understand several protocol, besides it&rsquo;s on http based interface. If you are already collecting metrics via <a href="https://graphiteapp.org/">Graphite</a> or using <a href="https://collectd.org/">CollectD</a> as a metric collector, you can easily configure InfluxDB to store their data by simply enabling the corresponding inputs in the config file <code>/etc/influxdb/influxdb.conf</code>:</p>
+<div class="highlight"><pre class="chroma"><code class="language-ini" data-lang="ini"><span class="k">[[collectd]]</span>
+  <span class="na">enabled</span> <span class="o">=</span> <span class="s">true</span>
+
+<span class="k">[[graphite]]</span>
+  <span class="na">enabled</span> <span class="o">=</span> <span class="s">true</span></code></pre></div>
+<p>This will open additional (configurable) ports where you can point your metric sources to. No further migration required!</p>
+
+<h3 id="telegraf">Telegraf</h3>
+
+<p>Telegraf is a metric collector, similar to <a href="https://collectd.org/">CollectD</a> or <a href="https://github.com/python-diamond/Diamond">Diamond</a>. It already provides a ton of usefull input and output plugins and can be easily extended. It comes from the same developers that designed the InfluxDB so they work very well together. Which is important! I learned the hard way that just storing data in your TSDB doesn&rsquo;t mean you can do anything useful with them afterwards. They should use proper field names and tags to be usefull for monitoring and graphing. Using the already implemented Telegraf plugins keeps that kind of struggle away from you, since they know what they are doing (most of the time). But like I said, this component can be easily traded for your favourite metric collector.</p>
+
+<p>Configuration is as easy as editing one config file and enabling the input that you want to collect. Want to monitor Kubernetes, including pods and containers? Here you go!</p>
+<div class="highlight"><pre class="chroma"><code class="language-ini" data-lang="ini"><span class="k">[[inputs.kubernetes]]</span>
+  <span class="na">url</span> <span class="o">=</span> <span class="s">&#34;http://127.0.0.1:10255&#34;</span></code></pre></div>
+<p>The only thing left is to point Telegraf at your InfluxDB and maybe provide some global tags that get added to every single metric to make grouping and selecting even easier:</p>
+<div class="highlight"><pre class="chroma"><code class="language-ini" data-lang="ini"><span class="k">[global_tags]</span>
+  <span class="na">cluster</span> <span class="o">=</span> <span class="s">&#34;021&#34;
+</span><span class="s">  datacenter = &#34;murika&#34;</span>
+
+<span class="k">[[outputs.influxdb]]</span>
+  <span class="na">username</span> <span class="o">=</span> <span class="s">&#34;user&#34;
+</span><span class="s">  password = &#34;passw0rd&#34;
+</span><span class="s">  urls = [&#34;http://influxdb.mycorp.net:8086&#34;]
+</span><span class="s">  database = &#34;telegraf&#34;</span></code></pre></div>
+<h3 id="kapacitor">Kapacitor</h3>
+
+<p>Here are things getting a little bit trickier. Kapacitor is a service that subscribes to databases in our InfluxDB, which means that any data that is inserted into said databases is also mirrored into Kapacitor. It then uses so called TICKScripts to evaluate the incoming data, transform it, join it and finally decide if something needs our attention. Since I struggled here for quite a while to get things up and running, here is a little more in depth walkthrough.</p>
+
+<p>Getting Kapacitor up and running is as easy as for all the InfluxData tools: download the appropriate package for your system, install it and edit the configuration file to point at your precious InfluxDB:</p>
+<div class="highlight"><pre class="chroma"><code class="language-ini" data-lang="ini"><span class="k">[[influxdb]]</span>
+  <span class="na">username</span> <span class="o">=</span> <span class="s">&#34;user&#34;
+</span><span class="s">  password = &#34;passw0rd&#34;
+</span><span class="s">  name = &#34;influxdb&#34;
+</span><span class="s">  default = true
+</span><span class="s">  enabled = true
+</span><span class="s">  urls = [&#34;http://influxdb.mycorp.net:8086&#34;]</span></code></pre></div>
+<p>Right now kapacitor is seeing all of the traffic that goes through your InfluxDB. And thats it. It does acutally nothing. Not cool? Right. So now we are writing some fancy TICKScripts to do some actuall alerting. As an example, we want to monitor the disk usage and alert if a disk is 80% full (Warning) or 90% full (Critical).</p>
+<div class="highlight"><pre class="chroma"><code class="language-tcsh" data-lang="tcsh">// Parameters
+var <span class="nv">warn</span> <span class="o">=</span> 80
+var <span class="nv">crit</span> <span class="o">=</span> 90
+
+var <span class="nv">period</span> <span class="o">=</span> 10s
+var <span class="nv">every</span> <span class="o">=</span> 10s
+
+// Dataframe
+var <span class="nv">data</span> <span class="o">=</span> stream
+  |from<span class="o">()</span>
+    .database<span class="o">(</span><span class="s1">&#39;telegraf&#39;</span><span class="o">)</span>
+    .retentionPolicy<span class="o">(</span><span class="s1">&#39;autogen&#39;</span><span class="o">)</span>
+    .measurement<span class="o">(</span><span class="s1">&#39;disk&#39;</span><span class="o">)</span>
+    .groupBy<span class="o">(</span><span class="s1">&#39;host&#39;</span>, <span class="s1">&#39;cluster&#39;</span>, <span class="s1">&#39;datacenter&#39;</span><span class="o">)</span>
+  |window<span class="o">()</span>
+    .period<span class="o">(</span>period<span class="o">)</span>
+    .every<span class="o">(</span>every<span class="o">)</span>
+  |mean<span class="o">(</span><span class="s1">&#39;used_percent&#39;</span><span class="o">)</span>
+    .as<span class="o">(</span><span class="s1">&#39;stat&#39;</span><span class="o">)</span>
+
+// Thresholds
+var <span class="nv">alert</span> <span class="o">=</span> data
+  |alert<span class="o">()</span>
+    .id<span class="o">(</span><span class="s1">&#39;{{ index .Tags &#34;host&#34;}}/disk_used&#39;</span><span class="o">)</span>
+    .message<span class="o">(</span><span class="s1">&#39;{{ .ID }}:{{ index .Fields &#34;stat&#34; }}&#39;</span><span class="o">)</span>
+    .warn<span class="o">(</span>lambda: <span class="s2">&#34;stat&#34;</span> &gt; warn<span class="o">)</span>
+    .crit<span class="o">(</span>lambda: <span class="s2">&#34;stat&#34;</span> &gt; crit<span class="o">)</span>
+
+// Alert
+alert
+    .log<span class="o">(</span><span class="s1">&#39;/tmp/disk_alert_log.txt&#39;</span><span class="o">)</span></code></pre></div>
+<p>Be sure that you gather this metric via Telegraf by enabling the disk plugin:</p>
+<div class="highlight"><pre class="chroma"><code class="language-ini" data-lang="ini"><span class="k">[[inputs.disk]]</span></code></pre></div>
+<p>The Parameters section should be obvious. Here we are defining some variables that are used in our script later on. The Dataframe section is a bit trickier. The TICKScript language is an invocation chaining language. So coming from the <code>stream</code> of data, we are selecting all data coming <code>from()</code> the database telegraf in the retention policy autogen (autogen is the default retention policy that is automatically generated when creating a database and has an infinite TTL). We are looking into the <code>measurement()</code> disk, which is where our disk usage informations are stored and grouping by some tags. Important: If you want to access tags from your measurements anywhere in your TICK script, you have to group by them. Otherwise they will not be available. Then we select the time window Kapacitor should take a look at: check the data from the last 10 seconds every 10 seconds. Finally we are looking into the used_percent field to get the used percentage metric and make it available under the name &lsquo;stat&rsquo;.</p>
+
+<p>If you would have gathered that data from your InfluxDB directly via InfluxQL it would look like this:</p>
+<div class="highlight"><pre class="chroma"><code class="language-sql" data-lang="sql"><span class="k">SELECT</span> <span class="n">mean</span><span class="p">(</span><span class="n">used_percent</span><span class="p">)</span> <span class="k">as</span> <span class="s2">&#34;stat&#34;</span> <span class="k">FROM</span> <span class="s2">&#34;telegraf&#34;</span><span class="p">.</span><span class="s2">&#34;autogen&#34;</span><span class="p">.</span><span class="s2">&#34;disk&#34;</span> <span class="k">GROUP</span> <span class="k">BY</span> <span class="s2">&#34;host&#34;</span><span class="p">,</span> <span class="s2">&#34;cluster&#34;</span><span class="p">,</span> <span class="s2">&#34;datacenter&#34;</span></code></pre></div>
+<p>Now that we have our <code>data</code>, we can check if we are exceeding our thresholds and create an <code>alert()</code>. Every alert should have uniqe ID, which is created via the <code>.id()</code> property. The <code>.message()</code> property defines a message (duh) with some human readable stuff to inform you about what is currently burning and where. The <code>.crit()</code> and <code>.warn()</code> properties are the actuall &ldquo;check&rdquo;. We test if our metric is exceeding our defined thresholds and issue a corresponding alert. For now by just writing to a temp file.</p>
+
+<p>This works quite well for most threshold checks (like Memory, CPU and Load metrics). When we come to customizations I will show some other examples on how to utilize this highly flexible (and highly complex) alerting method.</p>
+
+<p>But now we need to get this script running inside of Kapacitor. Save it on the host running Kapacitor as <code>disk.tick</code> and use the command line tool <code>kapacitor</code> to insert and enable it:</p>
+<div class="highlight"><pre class="chroma"><code class="language-bash" data-lang="bash">kapacitor define disk -type batch -tick disk.tick -dbrp telegraf.autogen
+kapacitor <span class="nb">enable</span> disk</code></pre></div>
+<p>That&rsquo;s it! As soon as one of your monitored disk fills up beyond 79% you should find a file in your <code>/tmp</code> directory containing your alert. You can find this and similar alerting examples in <a href="https://github.com/influxdata/kapacitor/tree/master/examples/telegraf">Kapacitors Github Repository</a>.</p>
+
+<h3 id="alerta">Alerta</h3>
+
+<p>Alerta is one of the (suprisingly) very few general purpose alerting dashboards out there. And honestly, it&rsquo;s a bit a pain in the ass to setup. It uses <a href="https://www.mongodb.com/">MongoDB</a> as a backend, supports different kinds of authentication and looks quite nice.</p>
+
+<p><a href="/img/alerta-screen-shot-3.png"><img src="/img/alerta-screen-shot-3.png" alt="" /></a></p>
+
+<p>The by far easiest way to get alerta up and running is by using the provided <a href="https://hub.docker.com/r/alerta/alerta-web/">Docker Container</a> and following the provided steps. I was setting it up via <a href="https://saltstack.com/">Salt</a> to run via <code>mod_wsgi</code> in Apache in an environment that has no public internet access. And that wasn&rsquo;t that funny. So do yourself a favour and use the Docker container to make your life less painfull. The container will expose the web frontend via port 80 and the API via the /api endpoint.</p>
+
+<p>As soon as we have Alerta running, we want Kapacitor to send alerts to our new fancy dashboard. Add the following section to your <code>/etc/kapacitor/kapacitor.conf</code>:</p>
+<div class="highlight"><pre class="chroma"><code class="language-ini" data-lang="ini"><span class="k">[alerta]</span>
+  <span class="na">url</span> <span class="o">=</span> <span class="s">&#34;http://alerta.mycorp.net/api&#34;
+</span><span class="s">  enabled = true
+</span><span class="s">  origin = &#34;Kapacitor&#34;</span></code></pre></div>
+<p>After a restart we can modify our TICKScript to send alerts to Alerta by exchanging:</p>
+<div class="highlight"><pre class="chroma"><code class="language-tcsh" data-lang="tcsh">// Alert
+alert
+  .log<span class="o">(</span><span class="s1">&#39;/tmp/disk_alert_log.txt&#39;</span><span class="o">)</span></code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre class="chroma"><code class="language-tcsh" data-lang="tcsh">// Alert
+alert
+  .alerta<span class="o">()</span>
+    .resource<span class="o">(</span><span class="s1">&#39;{{ index .Tags &#34;host&#34; }}&#39;</span><span class="o">)</span>
+    .environment<span class="o">(</span><span class="s1">&#39;{{ index .Tags &#34;cluster&#34; }}&#39;</span><span class="o">)</span>
+    .message<span class="o">(</span><span class="s1">&#39;Disk usage is {{ .Level }}&#39;</span><span class="o">)</span>
+    .group<span class="o">(</span><span class="s1">&#39;{{ index .Tags &#34;datacenter&#34; }}&#39;</span><span class="o">)</span>
+    .value<span class="o">(</span><span class="s1">&#39;{{ index .Fields &#34;stat&#34; }}&#39;</span><span class="o">)</span></code></pre></div>
+<p>Save the changed script and inform kapacitor about the changes:</p>
+<div class="highlight"><pre class="chroma"><code class="language-bash" data-lang="bash">kapacitor define disk -type batch -tick disk.tick -dbrp telegraf.autogen
+kapacitor <span class="nb">enable</span> disk</code></pre></div>
+<p>Kapacitor will update the already existing disk task with the new informations. From now on, new alerts should appear in your Alerta Dashboard. Congratulations, your metric based alerting chain is now complete! Time for some eyecandy!</p>
+
+<h3 id="grafana">Grafana</h3>
+
+<p>Grafana is a really awesome way to visualize any kind of metrics. It supports different Backends and has a great query editor included if you decide to use InfluxDB as one. Installation is thankfully quite simple: download your appropriate package, install, start, done! The default port for Grafana is 3000 and the default credentials are &ldquo;admin:admin&rdquo;. After logging in you go to &ldquo;Data Sources&rdquo; and add your InfluxDB with the database &ldquo;telegraf&rdquo;. Now you can create dashboards as your heart desires! For automation puposes, Grafana provides an API which you can use to create datasources and dashboards.</p>
+
+<p><a href="/img/grafana_k8s.jpg"><img src="/img/grafana_k8s.jpg#floatleft" alt="" /></a>
+<a href="/img/grafana_es.jpg"><img src="/img/grafana_es.jpg#floatright" alt="" /></a></p>
+
+<p><a href="/img/grafana_sys.jpg"><img src="/img/grafana_sys.jpg#floatleft" alt="" /></a>
+<a href="/img/grafana_influx.jpg"><img src="/img/grafana_influx.jpg#floatright" alt="" /></a></p>
+
+<p>Since the dashboards are highly customized for our infrastructure, sharing wouldn&rsquo;t make much sense. For more generic, ready to use dashboards you can visit <a href="https://grafana.net/">grafana.net</a> and download some pretty neat dashboards to save yourself some time. See the screenshots as a kick for your imagination. After having all your systems sending metrics to your InfluxDB, creating Dashboards and checking out what you can do with you new toys can be quite satisfying.</p>
+
+<h3 id="python">Python</h3>
+
+<p>Now that we have everything up and running, we will sooner or later encounter problems that can&rsquo;t be solved directly by our used tools. I for example wanted some more informations from our <a href="http://kubernetes.io/">Kubernetes</a> clusters than I could get out of the corresponding plugin. Also some of those informations were not metrics, but strings or bools. You can store them in your InfluxDB as well! Ok, let&rsquo;s look at a practical example:</p>
+
+<p>The Kubernetes API Server monitors the components needed for a Kubernetes Master internally and exposes them via it&rsquo;s API. Thats sound like a good way to get alerted if our controller manager, scheduler oder ETCD server having problems! Telegraf can execute external scripts and programs, they just have to return valid InfluxDB line protocol data to stdout. So, let&rsquo;s create a small Python script that get&rsquo;s us the required informations:</p>
+<div class="highlight"><pre class="chroma"><code class="language-python" data-lang="python"><span class="ch">#!/usr/bin/env python</span>
+<span class="c1"># -*- coding: utf-8 -*-</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="n">__version__</span> <span class="o">=</span> <span class="sa"></span><span class="s1">&#39;0.1&#39;</span>
+
+
+<span class="k">class</span> <span class="nc">KubeStatus</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="n">args</span>
+
+    <span class="k">def</span> <span class="nf">_get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">url</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">timeout</span><span class="p">))</span>
+        <span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">Timeout</span><span class="p">:</span>
+            <span class="n">resp</span> <span class="o">=</span> <span class="nb">object</span><span class="p">()</span>
+            <span class="n">resp</span><span class="o">.</span><span class="n">timeout</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">RequestException</span><span class="p">:</span>
+            <span class="n">resp</span> <span class="o">=</span> <span class="nb">object</span><span class="p">()</span>
+            <span class="n">resp</span><span class="o">.</span><span class="n">error</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">resp</span>
+
+    <span class="k">def</span> <span class="nf">get_component_status</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">metrics</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">tags</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="n">resp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get</span><span class="p">(</span><span class="sa"></span><span class="s1">&#39;{0}/api/v1/componentstatuses&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">url</span><span class="p">))</span>
+        <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="sa"></span><span class="s1">&#39;timeout&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">):</span>
+            <span class="n">metrics</span><span class="p">[</span><span class="sa"></span><span class="s1">&#39;timeout&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">elif</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">resp</span><span class="p">,</span> <span class="sa"></span><span class="s1">&#39;error&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">):</span>
+            <span class="n">metrics</span><span class="p">[</span><span class="sa"></span><span class="s1">&#39;error&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">component</span> <span class="ow">in</span> <span class="n">data</span><span class="p">[</span><span class="sa"></span><span class="s1">&#39;items&#39;</span><span class="p">]:</span>
+                <span class="n">tags</span><span class="p">[</span><span class="sa"></span><span class="s1">&#39;name&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">component</span><span class="p">[</span><span class="sa"></span><span class="s1">&#39;metadata&#39;</span><span class="p">][</span><span class="sa"></span><span class="s1">&#39;name&#39;</span><span class="p">]</span>
+                <span class="n">metrics</span><span class="p">[</span><span class="sa"></span><span class="s1">&#39;healthy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">component</span><span class="p">[</span><span class="sa"></span><span class="s1">&#39;conditions&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="sa"></span><span class="s1">&#39;status&#39;</span><span class="p">]</span>
+                <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">_influxline</span><span class="p">(</span><span class="sa"></span><span class="s1">&#39;kube_components&#39;</span><span class="p">,</span> <span class="n">metrics</span><span class="p">,</span> <span class="n">tags</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_influxline</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">measurement</span><span class="p">,</span> <span class="n">metrics</span><span class="p">,</span> <span class="n">tags</span><span class="p">):</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">mtags</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">metrics</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>
+                <span class="n">fmt_str</span> <span class="o">=</span> <span class="sa"></span><span class="s1">&#39;{0}=&#34;{1}&#34;&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">fmt_str</span> <span class="o">=</span> <span class="sa"></span><span class="s1">&#39;{0}={1}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+            <span class="n">values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fmt_str</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">tags</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+            <span class="n">fmt_str</span> <span class="o">=</span> <span class="sa"></span><span class="s1">&#39;{0}={1}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+            <span class="n">mtags</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fmt_str</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="sa"></span><span class="s2">&#34;{0},{1} {2}&#34;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">measurement</span><span class="p">,</span> <span class="sa"></span><span class="s1">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">mtags</span><span class="p">),</span> <span class="sa"></span><span class="s1">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">values</span><span class="p">))</span>
+
+
+<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="sa"></span><span class="s1">&#39;-v&#39;</span><span class="p">,</span> <span class="sa"></span><span class="s1">&#39;--version&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="sa"></span><span class="s1">&#39;version&#39;</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">__version__</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="sa"></span><span class="s1">&#39;-u&#39;</span><span class="p">,</span> <span class="sa"></span><span class="s1">&#39;--url&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="sa"></span><span class="s1">&#39;url to query&#39;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="sa"></span><span class="s1">&#39;http://localhost:8080&#39;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="sa"></span><span class="s1">&#39;-t&#39;</span><span class="p">,</span> <span class="sa"></span><span class="s1">&#39;--timeout&#39;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="sa"></span><span class="s1">&#39;timeout in seconds&#39;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="n">kubestatus</span> <span class="o">=</span> <span class="n">KubeStatus</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">metric</span> <span class="ow">in</span> <span class="n">kubestatus</span><span class="o">.</span><span class="n">get_component_status</span><span class="p">():</span>
+        <span class="k">print</span><span class="p">(</span><span class="n">metric</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="sa"></span><span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span></code></pre></div>
+<p>This can easily be extended to gather health informations about nodes, pods and containers. The full script can be found <a href="https://gist.github.com/Crapworks/1e8a817c8e21a5772279168fd515b436">here</a>. Now we can call it from Telegraf and gather the metrics into our InfluxDB:</p>
+<div class="highlight"><pre class="chroma"><code class="language-ini" data-lang="ini"><span class="k">[[inputs.exec]]</span>
+  <span class="na">commands</span> <span class="o">=</span> <span class="s">[&#34;/opt/monitoring/kube_status.py&#34;]
+</span><span class="s">  timeout = &#34;5s&#34;
+</span><span class="s">  data_format = &#34;influx&#34;</span></code></pre></div>
+<p>We can now show the informations in our grafana dashboards (like shown in the screenshot of our kubernetes cluster dashboard). But more importantly we can create a TICKScript that is alerting us as soon as something goes wrong with our cluster:</p>
+<div class="highlight"><pre class="chroma"><code class="language-tcsh" data-lang="tcsh">// Parameters
+var <span class="nv">period</span> <span class="o">=</span> 10s
+var <span class="nv">every</span> <span class="o">=</span> 10s
+
+// Dataframe
+var <span class="nv">data</span> <span class="o">=</span> stream
+  |from<span class="o">()</span>
+    .database<span class="o">(</span><span class="s1">&#39;telegraf&#39;</span><span class="o">)</span>
+    .retentionPolicy<span class="o">(</span><span class="s1">&#39;autogen&#39;</span><span class="o">)</span>
+    .measurement<span class="o">(</span><span class="s1">&#39;kube_components&#39;</span><span class="o">)</span>
+    .groupBy<span class="o">(</span><span class="s1">&#39;cluster&#39;</span>, <span class="s1">&#39;datacenter&#39;</span>, <span class="s1">&#39;name&#39;</span><span class="o">)</span>
+  |window<span class="o">()</span>
+    .period<span class="o">(</span>period<span class="o">)</span>
+    .every<span class="o">(</span>every<span class="o">)</span>
+
+// Thresholds
+var <span class="nv">alert</span> <span class="o">=</span> data
+  |alert<span class="o">()</span>
+    .id<span class="o">(</span><span class="s1">&#39;kubernetes/{{ index .Tags &#34;name&#34;}}&#39;</span><span class="o">)</span>
+    .message<span class="o">(</span><span class="s1">&#39;{{ .ID }}:{{ index .Fields &#34;healthy&#34; }}&#39;</span><span class="o">)</span>
+    .crit<span class="o">(</span>lambda: bool<span class="o">(</span><span class="s2">&#34;healthy&#34;</span><span class="o">)</span> !<span class="o">=</span> TRUE<span class="o">)</span>
+
+// Alert
+alert
+  .alerta<span class="o">()</span>
+    .resource<span class="o">(</span><span class="s1">&#39;{{ index .Tags &#34;cluster&#34; }}/kubernetes&#39;</span><span class="o">)</span>
+    .environment<span class="o">(</span><span class="s1">&#39;{{ index .Tags &#34;cluster&#34; }}&#39;</span><span class="o">)</span>
+    .message<span class="o">(</span><span class="s1">&#39;Kubernetes component {{ index .Tags &#34;name&#34; }} is {{ .Level }}&#39;</span><span class="o">)</span>
+    .group<span class="o">(</span><span class="s1">&#39;{{ index .Tags &#34;datacenter&#34; }}&#39;</span><span class="o">)</span>
+    .value<span class="o">(</span><span class="s1">&#39;{{ index .Fields &#34;healthy&#34; }}&#39;</span><span class="o">)</span></code></pre></div>
+<p>And here shows the true power of this kind of setup: We just added one TICKScript but every single Kubernetes cluster that sends it&rsquo;s metrics to our InfluxDB is now beeing monitored for failures. As soon as a new cluster comes up, there is nothing todo, the monitoring, visualisation and alerting is already running. If a cluster is destroyed the alerts would stay in Alerta until someone deletes it, but we just hooked a script into our destruction process that clears old alerts via Alertas API and clears data from our InfluxDB. We can do that because we have full controll over everything that is happening. Every component has an API that we can talk to via all of our automation processes.</p>
+
+<p>I hope you got an insight of what can be done using metric based monitoring and a completely OpenSource based software stack. Since we are chaining tools together mainly via well defined interfaces, changes specific to your infrastructure can be easily accomplished. Give it a try and decide for yourself if a transistion from check based monitoring is an option for you. For me it definitely was!</p>
+      </article>
+
+      
+        <ul class="pager blog-pager">
+          
+            <li class="previous">
+              <a href="http://crapworks.de/post/ceph-monitoring/" data-toggle="tooltip" data-placement="top" title="Monitoring a Ceph Cluster">&larr; Previous Post</a>
+            </li>
+          
+          
+        </ul>
+      
+
+
+      
+
+    </div>
+  </div>
+</div>
+
+    <footer>
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+        <ul class="list-inline text-center footer-links">
+          
+              <li>
+                <a href="https://github.com/Crapworks" title="GitHub">
+                  <span class="fa-stack fa-lg">
+                    <i class="fa fa-circle fa-stack-2x"></i>
+                    <i class="fa fa-github fa-stack-1x fa-inverse"></i>
+                  </span>
+                </a>
+              </li>
+              <li>
+                <a href="https://www.xing.com/profile/Christian_Eichelmann" title="Xing">
+                  <span class="fa-stack fa-lg">
+                    <i class="fa fa-circle fa-stack-2x"></i>
+                    <i class="fa fa-xing fa-stack-1x fa-inverse"></i>
+                  </span>
+                </a>
+              </li>
+              <li>
+                <a href="https://stackoverflow.com/4695347/christian-eichelmann" title="StackOverflow">
+                  <span class="fa-stack fa-lg">
+                    <i class="fa fa-circle fa-stack-2x"></i>
+                    <i class="fa fa-stack-overflow fa-stack-1x fa-inverse"></i>
+                  </span>
+                </a>
+              </li>
+          
+          <li>
+            
+            <a href="http://crapworks.de/index.xml" title="RSS">
+            
+              <span class="fa-stack fa-lg">
+                <i class="fa fa-circle fa-stack-2x"></i>
+                <i class="fa fa-rss fa-stack-1x fa-inverse"></i>
+              </span>
+            </a>
+          </li>
+          
+        </ul>
+        <p class="credits copyright text-muted">
+          
+            
+              Christian Eichelmann
+            
+          
+
+          &nbsp;&bull;&nbsp;
+          2016
+
+          
+            &nbsp;&bull;&nbsp;
+            <a href="http://crapworks.de/">Crapworks</a>
+          
+        </p>
+        
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.7.1/katex.min.js" integrity="sha384-/y1Nn9+QQAipbNQWU65krzJralCnuOasHncUFXGkdwntGeSvQicrYkiUBwsgUqc1" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.7.1/contrib/auto-render.min.js" integrity="sha384-dq1/gEHSxPZQ7DdrM82ID4YVol9BYyU7GbWlIwnwyPzotpoc57wDw/guX8EaYGPx" crossorigin="anonymous"></script>
+<script src="https://code.jquery.com/jquery-1.12.4.min.js" integrity="sha256-ZosEbRLbNQzLpnKIkEdrPv7lOy9C27hHQ+Xp8a4MxAQ=" crossorigin="anonymous"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+<script src="http://crapworks.de/js/main.js"></script><script> renderMathInElement(document.body); </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/photoswipe/4.1.2/photoswipe.min.js" integrity="sha384-QELNnmcmU8IR9ZAykt67vGr9/rZJdHbiWi64V88fCPaOohUlHCqUD/unNN0BXSqy" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/photoswipe/4.1.2/photoswipe-ui-default.min.js" integrity="sha384-m67o7SkQ1ALzKZIFh4CiTA8tmadaujiTa9Vu+nqPSwDOqHrDmxLezTdFln8077+q" crossorigin="anonymous"></script>
+<script src="http://crapworks.de/js/load-photoswipe.js"></script>
+
+
+
+
+
+
+  </body>
+</html>
+
